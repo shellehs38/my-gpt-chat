@@ -1,6 +1,7 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { useState } from "react";
+import type { FormEvent } from "react";
 import ReactMarkdown from "react-markdown";
 
 type Mode = "general" | "estimate" | "engineering" | "facade" | "business" | "documents";
@@ -114,7 +115,7 @@ export default function Home() {
           <div className="error-box" role="alert">
             <strong>Не удалось получить ответ</strong>
             <p>{error}</p>
-            <button className="secondary-button" type="button" onClick={() => sendMessage()}>Повторить запрос</button>
+            <button className="secondary-button" type="button" onClick={() => void sendMessage()}>Повторить запрос</button>
           </div>
         )}
         {reply && (
