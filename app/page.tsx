@@ -266,6 +266,11 @@ export default function Home() {
               <span className="answer-dot" />
               <h3>Ответ помощника</h3>
             </div>
+            {hasMarkdownTable && (
+              <p className="editable-table-instructions">
+                Заполните или исправьте значения прямо в полях карточек ниже, затем нажмите «Отправить данные ассистенту на пересчёт».
+              </p>
+            )}
             <div className="markdown-content">
               <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ table: MarkdownTable }}>{reply}</ReactMarkdown>
             </div>
@@ -273,7 +278,7 @@ export default function Home() {
               <div className="table-edit-actions">
                 <p className="hint">Нажми на значение в карточке, чтобы изменить его. Можно заполнить количество, цену, толщину, тип материала и другие исходные данные.</p>
                 <button className="primary-button" type="button" disabled={loading || Object.keys(tableEdits).length === 0} onClick={recalculateWithEdits}>
-                  {loading ? "Пересчитываю…" : "Пересчитать по введённым данным"}
+                  {loading ? "Пересчитываю…" : "Отправить данные ассистенту на пересчёт"}
                 </button>
               </div>
             )}
