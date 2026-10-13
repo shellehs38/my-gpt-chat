@@ -125,12 +125,11 @@ function ResponsiveMarkdownTable({ children, editedValues, onEdit }: { children?
             <section className="mobile-table-card" key={rowIndex}>
               {cells.map((cell, cellIndex) => {
                 const value = (cell as MarkdownElement).props.children;
-                if (!getPlainText(value).trim()) return null;
                 const label = headerNames[cellIndex] ?? `Поле ${cellIndex + 1}`;
                 const key = cellKey(rowIndex, cellIndex);
                 const isCalculatedSum = cellIndex === sumIndex && quantityIndex >= 0 && priceIndex >= 0;
                 const displayedValue = isCalculatedSum
-                  ? calculatedSum || "Заполните количество и цену"
+                  ? calculatedSum
                   : editedValues[key] ?? getPlainText(value);
                 return (
                   <div className="mobile-table-field" key={cellIndex}>
