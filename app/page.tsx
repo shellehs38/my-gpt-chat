@@ -1,11 +1,66 @@
 "use client";
 
-import { useState } from "react";
+import { Children, isValidElement, useState } from "react";
+import type { ReactNode, ReactElement } from "react";
 import type { FormEvent } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 type Mode = "general" | "estimate" | "engineering" | "facade" | "business" | "documents";
+
+type MarkdownElement = ReactElement<{ children?: ReactNode }>;
+
+function getChildren(node: ReactNode): ReactNode[] {
+  if (!isValidElement(node)) return [];
+  return Children.toArray((node as MarkdownElement).props.children);
+}
+
+function getElementType(node: ReactNode): string | undefined {
+  if (!isValidElement(node)) return undefined;
+  const type = (node as MarkdownElement).type;
+  return typeof type === "string" ? type : undefined;
+}
+
+function ResponsiveMarkdownTable({ children }: { children?: ReactNode }) {
+  const sections = Children.toArray(children);
+  const head = sections.find((section) => getElementType(section) === "thead");
+  const body = sections.find((section) => getElementType(section) === "tbody");
+  const headerRow = head ? getChildren(head).find((row) => getElementType(row) === "tr") : undefined;
+  const headers = headerRow
+    ? getChildren(headerRow).filter((cell) => ["th", "td"].includes(getElementType(cell) ?? "")).map((cell) => (cell as MarkdownElement).props.children)
+    : [];
+  const rows = body
+    ? getChildren(body).filter((row) => getElementType(row) === "tr")
+    : [];
+
+  return (
+    <>
+      <div className="desktop-table-scroll">
+        <table>{children}</table>
+      </div>
+      <div className="mobile-table-cards">
+        {rows.map((row, rowIndex) => {
+          const cells = getChildren(row).filter((cell) => ["th", "td"].includes(getElementType(cell) ?? ""));
+          return (
+            <section className="mobile-table-card" key={rowIndex}>
+              {cells.map((cell, cellIndex) => {
+                const value = (cell as MarkdownElement).props.children;
+                const isEmpty = value === null || value === undefined || value === "";
+                if (isEmpty) return null;
+                return (
+                  <div className="mobile-table-field" key={cellIndex}>
+                    <span className="mobile-table-label">{headers[cellIndex] ?? `Поле ${cellIndex + 1}`}</span>
+                    <div className="mobile-table-value">{value}</div>
+                  </div>
+                );
+              })}
+            </section>
+          );
+        })}
+      </div>
+    </>
+  );
+}
 
 const modes: { id: Mode; label: string; description: string; prompt: string }[] = [
   { id: "general", label: "Общий помощник", description: "Дом, стройка и организация работ", prompt: "Опиши задачу, объект или вопрос по строительству." },
@@ -126,7 +181,7 @@ export default function Home() {
               <h3>Ответ помощника</h3>
             </div>
             <div className="markdown-content">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{reply}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ table: ResponsiveMarkdownTable }}>{reply}</ReactMarkdown>
             </div>
             <button className="secondary-button" type="button" onClick={() => navigator.clipboard?.writeText(reply)}>
               Копировать ответ
