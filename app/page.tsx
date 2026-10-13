@@ -67,7 +67,12 @@ function ResponsiveMarkdownTable({ children, editedValues, onEdit }: { children?
   const priceIndex = normalized.findIndex((name) => /цена.*единиц|цена за ед|цена,?\s*руб/.test(name));
   const sumIndex = normalized.findIndex((name) => /^(сумма|сумма,?\s*руб\.?|стоимость,?\s*руб\.?)$/.test(name));
   const tableKey = headerNames.join("|");
-  const cellKey = (rowIndex: number, cellIndex: number) => tableKey + ":" + rowIndex + ":" + cellIndex;
+  const tableSignature = rows.map((row) => {
+    const cells = getChildren(row).filter((cell) => ["th", "td"].includes(getElementType(cell) ?? ""));
+    return getPlainText((cells[1] as MarkdownElement | undefined)?.props.children ?? (cells[0] as MarkdownElement | undefined)?.props.children ?? "").trim();
+  }).filter(Boolean).slice(0, 3).join("|");
+  const scopedTableKey = tableKey + "::" + tableSignature;
+  const cellKey = (rowIndex: number, cellIndex: number) => scopedTableKey + ":" + rowIndex + ":" + cellIndex;
   const parseNumber = (value: string): number | null => {
     const cleaned = value.replace(/\s/g, "").replace(/руб\.?/gi, "").replace(",", ".");
     if (!cleaned || !/^-?\d+(\.\d+)?$/.test(cleaned)) return null;
