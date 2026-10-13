@@ -7,44 +7,6 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 
-
-function normalizeMarkdownTables(markdown: string): string {
-  const lines = markdown.split("\n");
-  const result: string[] = [];
-  let i = 0;
-
-  const isPipeRow = (line: string) =>
-    /^\s*\|.*\|\s*$/.test(line) && (line.match(/\|/g)?.length ?? 0) >= 2;
-  const isSeparator = (line: string) =>
-    /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(line);
-
-  while (i < lines.length) {
-    if (!isPipeRow(lines[i])) {
-      result.push(lines[i]);
-      i++;
-      continue;
-    }
-
-    const block: string[] = [];
-    while (i < lines.length && isPipeRow(lines[i])) {
-      block.push(lines[i]);
-      i++;
-    }
-
-    if (block.length >= 2 && !isSeparator(block[1])) {
-      const columnCount = Math.max(
-        ...block.slice(0, 2).map((row) => row.split("|").length - 2),
-      );
-      const separator = "|" + Array(Math.max(1, columnCount)).fill(" --- ").join("|") + "|";
-      block.splice(1, 0, separator);
-    }
-
-    result.push(...block);
-  }
-
-  return result.join("\n");
-}
-
 type Mode = "general" | "estimate" | "engineering" | "facade" | "business" | "documents";
 
 type MarkdownElement = ReactElement<{ children?: ReactNode }>;
@@ -248,7 +210,7 @@ export default function Home() {
               <h3>Ответ помощника</h3>
             </div>
             <div className="markdown-content">
-              <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ table: ResponsiveMarkdownTable }}>{normalizeMarkdownTables(reply)}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ table: ResponsiveMarkdownTable }}>{reply}</ReactMarkdown>
             </div>
             <button className="secondary-button" type="button" onClick={() => navigator.clipboard?.writeText(reply)}>
               Копировать ответ
