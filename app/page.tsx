@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 type Mode = "general" | "estimate" | "engineering" | "facade" | "business" | "documents";
 
@@ -125,7 +126,7 @@ export default function Home() {
               <h3>Ответ помощника</h3>
             </div>
             <div className="markdown-content">
-              <ReactMarkdown>{reply}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{reply}</ReactMarkdown>
             </div>
             <button className="secondary-button" type="button" onClick={() => navigator.clipboard?.writeText(reply)}>
               Копировать ответ
