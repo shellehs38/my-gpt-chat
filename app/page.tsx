@@ -1,6 +1,6 @@
 "use client";
 
-import { Children, isValidElement, useState } from "react";
+import { Children, createContext, isValidElement, useContext, useState } from "react";
 import type { ReactNode, ReactElement } from "react";
 import type { FormEvent } from "react";
 import ReactMarkdown from "react-markdown";
@@ -10,6 +10,16 @@ import remarkGfm from "remark-gfm";
 type Mode = "general" | "estimate" | "engineering" | "facade" | "business" | "documents";
 
 type MarkdownElement = ReactElement<{ children?: ReactNode }>;
+
+type EstimateEdit = { item: string; field: string; value: string; original: string };
+type EstimateEditContextValue = {
+  editedValues: Record<string, string>;
+  onEdit: (key: string, edit: EstimateEdit) => void;
+};
+const EstimateEditContext = createContext<EstimateEditContextValue>({
+  editedValues: {},
+  onEdit: () => {},
+});
 
 function getChildren(node: ReactNode): ReactNode[] {
   if (!isValidElement(node)) return [];
@@ -29,7 +39,7 @@ function getPlainText(node: ReactNode): string {
   return getChildren(node).map(getPlainText).join("");
 }
 
-function ResponsiveMarkdownTable({ children, editedValues, onEdit }: { children?: ReactNode; editedValues: Record<string, string>; onEdit: (key: string, edit: { item: string; field: string; value: string; original: string }) => void }) {
+function ResponsiveMarkdownTable({ children, editedValues, onEdit }: { children?: ReactNode; editedValues: Record<string, string>; onEdit: (key: string, edit: EstimateEdit) => void }) {
   const sections = Children.toArray(children);
   const head = sections.find((section) => getElementType(section) === "thead");
   const body = sections.find((section) => getElementType(section) === "tbody");
@@ -91,6 +101,11 @@ function ResponsiveMarkdownTable({ children, editedValues, onEdit }: { children?
   );
 }
 
+function MarkdownTable(props: { children?: ReactNode }) {
+  const editContext = useContext(EstimateEditContext);
+  return <ResponsiveMarkdownTable {...props} {...editContext} />;
+}
+
 const modes: { id: Mode; label: string; description: string; prompt: string }[] = [
   { id: "general", label: "Общий помощник", description: "Дом, стройка и организация работ", prompt: "Опиши задачу, объект или вопрос по строительству." },
   { id: "estimate", label: "Смета и расчёты", description: "Материалы, работы, количество и стоимость", prompt: "Например: помоги составить смету. Сначала уточни недостающие исходные данные." },
@@ -140,7 +155,6 @@ export default function Home() {
 
   const selectedMode = modes.find((item) => item.id === mode) ?? modes[0];
   const hasTable = /\|.+\|[\s\S]*?\n\s*\|?[-:| ]+\|/m.test(reply);
-  const MarkdownTable = (props: { children?: ReactNode }) => <ResponsiveMarkdownTable {...props} editedValues={editedValues} onEdit={(key, edit) => setTableEdits((prev) => ({ ...prev, [key]: edit }))} />;
   function submitEditedEstimate() {
     const details = Object.values(tableEdits).map((edit) => "- " + edit.item + "; " + edit.field + ": " + (edit.value || "не указано")).join("\n");
     if (!details || !lastPrompt) return;
@@ -223,7 +237,7 @@ export default function Home() {
               <h3>Ответ помощника</h3>
             </div>
             <div className="markdown-content">
-              <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ table: MarkdownTable }}>{reply}</ReactMarkdown>
+              <EstimateEditContext.Provider value={{ editedValues, onEdit: (key, edit) => setTableEdits((prev) => ({ ...prev, [key]: edit })) }}><ReactMarkdown remarkPlugins={[remarkGfm]} components={{ table: MarkdownTable }}>{reply}</ReactMarkdown></EstimateEditContext.Provider>
             </div>
             {hasTable && <div className="estimate-edit-actions"><p>Измени значения прямо в карточках, затем отправь их ассистенту на пересчёт.</p><button className="primary-button" type="button" disabled={loading || Object.keys(tableEdits).length === 0} onClick={submitEditedEstimate}>{loading ? "Пересчитываю…" : "Отправить данные ассистенту"}</button></div>}
             <button className="secondary-button" type="button" onClick={() => navigator.clipboard?.writeText(reply)}>Копировать ответ</button>
