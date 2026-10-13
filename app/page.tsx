@@ -21,6 +21,13 @@ function getElementType(node: ReactNode): string | undefined {
   return typeof type === "string" ? type : undefined;
 }
 
+function getPlainText(node: ReactNode): string {
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(getPlainText).join("");
+  if (!isValidElement(node)) return "";
+  return getChildren(node).map(getPlainText).join("");
+}
+
 function ResponsiveMarkdownTable({ children }: { children?: ReactNode }) {
   const sections = Children.toArray(children);
   const head = sections.find((section) => getElementType(section) === "thead");
@@ -41,12 +48,27 @@ function ResponsiveMarkdownTable({ children }: { children?: ReactNode }) {
       <div className="mobile-table-cards">
         {rows.map((row, rowIndex) => {
           const cells = getChildren(row).filter((cell) => ["th", "td"].includes(getElementType(cell) ?? ""));
+          const values = cells.map((cell) => (cell as MarkdownElement).props.children);
+          const nonEmpty = values.map((value) => getPlainText(value).trim());
+          const firstLabel = (headers[0] ? getPlainText(headers[0]) : "").trim().toLowerCase();
+          const firstValue = (nonEmpty[0] ?? "").toLowerCase();
+          const secondValue = (nonEmpty[1] ?? "").toLowerCase();
+          const remainingEmpty = nonEmpty.slice(2).every((value) => !value);
+          const isSectionRow = remainingEmpty && (
+            (firstLabel === "статья" && ["материалы", "работы"].includes(secondValue)) ||
+            (nonEmpty.filter(Boolean).length === 1 && nonEmpty[0].length > 0)
+          );
+
+          if (isSectionRow) {
+            const title = firstLabel === "статья" && secondValue ? values[1] : values[0];
+            return <h4 className="mobile-table-section-heading" key={rowIndex}>{title}</h4>;
+          }
+
           return (
             <section className="mobile-table-card" key={rowIndex}>
               {cells.map((cell, cellIndex) => {
                 const value = (cell as MarkdownElement).props.children;
-                const isEmpty = value === null || value === undefined || value === "";
-                if (isEmpty) return null;
+                if (!getPlainText(value).trim()) return null;
                 return (
                   <div className="mobile-table-field" key={cellIndex}>
                     <span className="mobile-table-label">{headers[cellIndex] ?? `Поле ${cellIndex + 1}`}</span>
