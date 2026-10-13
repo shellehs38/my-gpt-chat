@@ -11,28 +11,36 @@ function errorResponse(message: string, status: number) {
 }
 
 function ensureScaffoldRows(reply: string): string {
-  const scaffoldRows = [
+  const requiredNames = [
+    "монтаж строительных лесов",
+    "демонтаж строительных лесов",
+  ];
+  const rows = [
     "|  | Монтаж строительных лесов |  |  |  |  | Уточнить необходимость и объём; если леса не нужны или предоставлены заказчиком — указать это здесь. |",
     "|  | Демонтаж строительных лесов |  |  |  |  | Уточнить необходимость и объём; если леса не нужны или предоставлены заказчиком — указать это здесь. |",
   ];
 
-  // Add scaffold rows deterministically to each Markdown table under a «Работы» heading.
-  // This is a safeguard: model instructions alone have repeatedly failed to preserve these items.
-  return reply.replace(
-    /((?:^#{1,6}\\s*Работы\\b[^\\n]*|^\\*\\*Работы:?\\*\\*[^\\n]*|^Работы:?)[\\s\\r\\n]*)(\\|[^\\n]*\\n\\|[\\s:|\\-]+\\n(?:\\|[^\\n]*\\n?)+)/gim,
-    (section, heading, table) => {
-      let updated = table;
-      for (const row of scaffoldRows) {
-        const name = row.split("|")[2].trim().toLowerCase();
-        if (!updated.toLowerCase().includes(name)) {
-          updated = updated.replace(/\\n?$/, "\\n") + row + "\\n";
-        }
-      }
-      return heading + updated;
-    }
-  );
-}
+  // Locate a «Работы» heading and the Markdown table immediately following it.
+  const headingPattern = /(^#{1,6}\s*Работы\b[^\n]*|^\*\*Работы:?\*\*[^\n]*|^Работы:?)[ \t]*\r?\n/im;
+  const headingMatch = headingPattern.exec(reply);
+  if (!headingMatch || headingMatch.index === undefined) return reply;
 
+  const tableStart = headingMatch.index + headingMatch[0].length;
+  const rest = reply.slice(tableStart);
+  const tableMatch = /^(\|[^\n]*\r?\n\|[ \t:|\-]+\r?\n(?:\|[^\n]*(?:\r?\n|$))*)/m.exec(rest);
+  if (!tableMatch) return reply;
+
+  let table = tableMatch[1];
+  const newline = table.includes("\r\n") ? "\r\n" : "\n";
+  for (let i = 0; i < rows.length; i++) {
+    if (!table.toLowerCase().includes(requiredNames[i])) {
+      if (!table.endsWith("\n") && !table.endsWith("\r\n")) table += newline;
+      table += rows[i] + newline;
+    }
+  }
+
+  return reply.slice(0, tableStart) + table + rest.slice(tableMatch[1].length);
+}
 function extractOutputText(data: unknown): string {
   if (
     typeof data !== "object" ||
@@ -223,7 +231,7 @@ export async function POST(request: Request) {
             (/фасад|откос|подсистем|облицовк|сайдинг/i.test(message) ? FACADE_WORK_KNOWLEDGE : ""),
           input: isEstimateRequest
             ? message +
-              "\\n\\n" + requestedScope +
+              "\n\n" + requestedScope +
               "ОБЯЗАТЕЛЬНЫЙ ФОРМАТ ОТВЕТА: выдай смету именно Markdown-таблицами, не списками и не текстовыми шаблонами с подчёркиваниями. " +
               (asksNoInsulationOnly
                 ? "Выведи только один заголовок «Вариант — без утепления», таблицу «Материалы» и отдельную таблицу «Работы». Не упоминай и не составляй вариант с утеплением. "
