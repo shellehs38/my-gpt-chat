@@ -6,6 +6,31 @@ import type { FormEvent } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
+
+function repairMarkdownTables(markdown: string): string {
+  const lines = markdown.split("\n");
+  const output: string[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const next = lines[i + 1] ?? "";
+    const isPipeLine = /^\s*\|.*\|\s*$/.test(line) && (line.match(/\|/g)?.length ?? 0) >= 3;
+    const nextIsSeparator = /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(next);
+
+    if (isPipeLine && !nextIsSeparator) {
+      const cells = line.split("|").map((cell) => cell.trim()).filter(Boolean);
+      const looksLikeSeparator = cells.length > 0 && cells.every((cell) => /^:?-{3,}:?$/.test(cell));
+      if (!looksLikeSeparator && cells.length >= 3) {
+        output.push("- " + cells.map((cell, index) => index === 0 ? "**" + cell + "**" : cell).join(" — "));
+        continue;
+      }
+    }
+    output.push(line);
+  }
+
+  return output.join("\n");
+}
+
 type Mode = "general" | "estimate" | "engineering" | "facade" | "business" | "documents";
 
 type MarkdownElement = ReactElement<{ children?: ReactNode }>;
@@ -209,7 +234,7 @@ export default function Home() {
               <h3>Ответ помощника</h3>
             </div>
             <div className="markdown-content">
-              <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ table: ResponsiveMarkdownTable }}>{reply}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ table: ResponsiveMarkdownTable }}>{repairMarkdownTables(reply)}</ReactMarkdown>
             </div>
             <button className="secondary-button" type="button" onClick={() => navigator.clipboard?.writeText(reply)}>
               Копировать ответ
