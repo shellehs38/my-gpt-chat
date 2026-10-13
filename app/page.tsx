@@ -1,6 +1,6 @@
 "use client";
 
-import { Children, createContext, isValidElement, useContext, useState } from "react";
+import { Children, cloneElement, createContext, isValidElement, useContext, useState } from "react";
 import type { ReactNode, ReactElement } from "react";
 import type { FormEvent } from "react";
 import ReactMarkdown from "react-markdown";
@@ -47,7 +47,21 @@ function ResponsiveMarkdownTable({ children, editedValues, onEdit }: { children?
   const headers = headerRow
     ? getChildren(headerRow).filter((cell) => ["th", "td"].includes(getElementType(cell) ?? "")).map((cell) => (cell as MarkdownElement).props.children)
     : [];
-  const headerNames = headers.map((header) => getPlainText(header).trim());
+  const originalHeaderNames = headers.map((header) => getPlainText(header).trim());
+  const unitIndex = originalHeaderNames.findIndex((name) => /^(ед\.?\s*изм\.?|единица измерения|ед\.?\s*измерения)$/i.test(name));
+  const filteredChildren = Children.map(children, (section) => {
+    const sectionType = getElementType(section);
+    if (!isValidElement(section) || !["thead", "tbody"].includes(sectionType ?? "")) return section;
+    const rows = getChildren(section).map((row) => {
+      if (!isValidElement(row) || getElementType(row) !== "tr") return row;
+      const cells = getChildren(row);
+      return cloneElement(row as ReactElement<{ children?: ReactNode }>, {
+        children: cells.filter((_, index) => index !== unitIndex),
+      });
+    });
+    return cloneElement(section as ReactElement<{ children?: ReactNode }>, { children: rows });
+  });
+  const headerNames = originalHeaderNames.filter((_, index) => index !== unitIndex);
   const normalized = headerNames.map((name) => name.toLowerCase());
   const quantityIndex = normalized.findIndex((name) => /^(количество|кол-во|количество,?\s*ед\.?|кол-во,?\s*ед\.?)$/.test(name));
   const priceIndex = normalized.findIndex((name) => /цена.*единиц|цена за ед|цена,?\s*руб/.test(name));
@@ -61,14 +75,15 @@ function ResponsiveMarkdownTable({ children, editedValues, onEdit }: { children?
     return Number.isFinite(number) ? number : null;
   };
   const formatNumber = (value: number) => new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 2 }).format(value);
-  const rows = body
-    ? getChildren(body).filter((row) => getElementType(row) === "tr")
+  const filteredBody = Children.toArray(filteredChildren).find((section) => getElementType(section) === "tbody");
+  const rows = filteredBody
+    ? getChildren(filteredBody).filter((row) => getElementType(row) === "tr")
     : [];
 
   return (
     <>
       <div className="desktop-table-scroll">
-        <table>{children}</table>
+        <table>{filteredChildren}</table>
       </div>
       <div className="mobile-table-cards">
         {rows.map((row, rowIndex) => {
