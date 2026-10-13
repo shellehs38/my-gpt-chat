@@ -47,6 +47,20 @@ function ResponsiveMarkdownTable({ children, editedValues, onEdit }: { children?
   const headers = headerRow
     ? getChildren(headerRow).filter((cell) => ["th", "td"].includes(getElementType(cell) ?? "")).map((cell) => (cell as MarkdownElement).props.children)
     : [];
+  const headerNames = headers.map((header) => getPlainText(header).trim());
+  const normalized = headerNames.map((name) => name.toLowerCase());
+  const quantityIndex = normalized.findIndex((name) => /^(количество|кол-во|количество,?\s*ед\.?|кол-во,?\s*ед\.?)$/.test(name));
+  const priceIndex = normalized.findIndex((name) => /цена.*единиц|цена за ед|цена,?\s*руб/.test(name));
+  const sumIndex = normalized.findIndex((name) => /^(сумма|сумма,?\s*руб\.?|стоимость,?\s*руб\.?)$/.test(name));
+  const tableKey = headerNames.join("|");
+  const cellKey = (rowIndex: number, cellIndex: number) => tableKey + ":" + rowIndex + ":" + cellIndex;
+  const parseNumber = (value: string): number | null => {
+    const cleaned = value.replace(/\s/g, "").replace(/руб\.?/gi, "").replace(",", ".");
+    if (!cleaned || !/^-?\d+(\.\d+)?$/.test(cleaned)) return null;
+    const number = Number(cleaned);
+    return Number.isFinite(number) ? number : null;
+  };
+  const formatNumber = (value: number) => new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 2 }).format(value);
   const rows = body
     ? getChildren(body).filter((row) => getElementType(row) === "tr")
     : [];
@@ -81,15 +95,50 @@ function ResponsiveMarkdownTable({ children, editedValues, onEdit }: { children?
             return <h4 className="mobile-table-section-heading" key={rowIndex}>{title}</h4>;
           }
 
+          const itemName = getPlainText(values[1] ?? values[0] ?? "Позиция");
+          const rawQuantity = quantityIndex >= 0 ? (editedValues[cellKey(rowIndex, quantityIndex)] ?? getPlainText(values[quantityIndex] ?? "")) : "";
+          const rawPrice = priceIndex >= 0 ? (editedValues[cellKey(rowIndex, priceIndex)] ?? getPlainText(values[priceIndex] ?? "")) : "";
+          const quantity = parseNumber(rawQuantity);
+          const price = parseNumber(rawPrice);
+          const calculatedSum = quantity !== null && price !== null ? formatNumber(quantity * price) : "";
+
           return (
             <section className="mobile-table-card" key={rowIndex}>
               {cells.map((cell, cellIndex) => {
                 const value = (cell as MarkdownElement).props.children;
                 if (!getPlainText(value).trim()) return null;
+                const label = headerNames[cellIndex] ?? `Поле ${cellIndex + 1}`;
+                const key = cellKey(rowIndex, cellIndex);
+                const isCalculatedSum = cellIndex === sumIndex && quantityIndex >= 0 && priceIndex >= 0;
+                const displayedValue = isCalculatedSum
+                  ? calculatedSum || "Заполните количество и цену"
+                  : editedValues[key] ?? getPlainText(value);
                 return (
                   <div className="mobile-table-field" key={cellIndex}>
-                    <span className="mobile-table-label">{headers[cellIndex] ?? `Поле ${cellIndex + 1}`}</span>
-                    <div className="mobile-table-value"><textarea className="estimate-card-input" aria-label={getPlainText(headers[cellIndex] ?? "Поле")} value={editedValues[headers.map((header) => getPlainText(header)).join("|") + ":" + rowIndex + ":" + cellIndex] ?? getPlainText(value)} rows={Math.min(4, Math.max(1, Math.ceil(getPlainText(value).length / 30)))} onChange={(event) => onEdit(headers.map((header) => getPlainText(header)).join("|") + ":" + rowIndex + ":" + cellIndex, { item: getPlainText(values[1] ?? values[0] ?? "Позиция"), field: getPlainText(headers[cellIndex] ?? "Поле"), value: event.target.value, original: getPlainText(value) })} /></div>
+                    <span className="mobile-table-label">{label}</span>
+                    <div className="mobile-table-value">
+                      <textarea
+                        className="estimate-card-input"
+                        aria-label={label}
+                        value={displayedValue}
+                        readOnly={isCalculatedSum}
+                        inputMode={cellIndex === quantityIndex || cellIndex === priceIndex ? "decimal" : "text"}
+                        rows={Math.min(4, Math.max(1, Math.ceil(displayedValue.length / 30)))}
+                        onChange={(event) => {
+                          const newValue = event.target.value;
+                          onEdit(key, { item: itemName, field: label, value: newValue, original: getPlainText(value) });
+                          if ((cellIndex === quantityIndex || cellIndex === priceIndex) && sumIndex >= 0 && quantityIndex >= 0 && priceIndex >= 0) {
+                            const nextQuantityText = cellIndex === quantityIndex ? newValue : rawQuantity;
+                            const nextPriceText = cellIndex === priceIndex ? newValue : rawPrice;
+                            const nextQuantity = parseNumber(nextQuantityText);
+                            const nextPrice = parseNumber(nextPriceText);
+                            const nextSum = nextQuantity !== null && nextPrice !== null ? formatNumber(nextQuantity * nextPrice) : "";
+                            const sumValue = nextSum || "Заполните количество и цену";
+                            onEdit(cellKey(rowIndex, sumIndex), { item: itemName, field: headerNames[sumIndex] ?? "Сумма, руб.", value: sumValue, original: getPlainText(values[sumIndex] ?? "") });
+                          }
+                        }}
+                      />
+                    </div>
                   </div>
                 );
               })}
