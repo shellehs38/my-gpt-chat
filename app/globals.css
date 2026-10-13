@@ -53,8 +53,8 @@ textarea:focus { outline: 3px solid #c8e5d4; border-color: var(--green); }
 .markdown-content p { margin: .7em 0; }
 .markdown-content ul, .markdown-content ol { padding-left: 1.5em; }
 .markdown-content li { margin: .35em 0; }
-.markdown-content table { display: block; width: 100%; max-width: 100%; overflow-x: auto; border-collapse: collapse; border-spacing: 0; -webkit-overflow-scrolling: touch; }
-.markdown-content th, .markdown-content td { padding: 9px 10px; border: 1px solid var(--line); text-align: left; vertical-align: top; min-width: 88px; }
+.markdown-content table { display: block; width: max-content; min-width: 620px; max-width: 100%; overflow-x: auto; border-collapse: collapse; border-spacing: 0; table-layout: auto; -webkit-overflow-scrolling: touch; }
+.markdown-content th, .markdown-content td { padding: 9px 10px; border: 1px solid var(--line); text-align: left; vertical-align: top; min-width: 112px; overflow-wrap: normal; word-break: normal; }
 .markdown-content th { background: var(--green-soft); }
 .markdown-content blockquote { margin: 1em 0; padding: 2px 14px; border-left: 3px solid var(--green); color: var(--muted); }
 .markdown-content code { padding: 2px 5px; border-radius: 5px; background: #f0f3f1; font-size: .9em; }
@@ -70,6 +70,6 @@ textarea:focus { outline: 3px solid #c8e5d4; border-color: var(--green); }
   .form-footer { align-items: stretch; flex-direction: column; }
   .primary-button { width: 100%; }
   .markdown-content { font-size: 14px; line-height: 1.65; }
-  .markdown-content th, .markdown-content td { padding: 8px; min-width: 96px; }
-  .markdown-content table { font-size: 13px; }
+  .markdown-content th, .markdown-content td { padding: 8px; min-width: 112px; }
+  .markdown-content table { min-width: 620px; font-size: 13px; }
 }
