@@ -29,7 +29,7 @@ function getPlainText(node: ReactNode): string {
   return getChildren(node).map(getPlainText).join("");
 }
 
-function ResponsiveMarkdownTable({ children }: { children?: ReactNode }) {
+function ResponsiveMarkdownTable({ children, editedValues, onEdit }: { children?: ReactNode; editedValues: Record<string, string>; onEdit: (key: string, edit: { item: string; field: string; value: string; original: string }) => void }) {
   const sections = Children.toArray(children);
   const head = sections.find((section) => getElementType(section) === "thead");
   const body = sections.find((section) => getElementType(section) === "tbody");
@@ -79,7 +79,7 @@ function ResponsiveMarkdownTable({ children }: { children?: ReactNode }) {
                 return (
                   <div className="mobile-table-field" key={cellIndex}>
                     <span className="mobile-table-label">{headers[cellIndex] ?? `Поле ${cellIndex + 1}`}</span>
-                    <div className="mobile-table-value">{value}</div>
+                    <div className="mobile-table-value"><textarea className="estimate-card-input" aria-label={getPlainText(headers[cellIndex] ?? "Поле")} value={editedValues[headers.map((header) => getPlainText(header)).join("|") + ":" + rowIndex + ":" + cellIndex] ?? getPlainText(value)} rows={Math.min(4, Math.max(1, Math.ceil(getPlainText(value).length / 30)))} onChange={(event) => onEdit(headers.map((header) => getPlainText(header)).join("|") + ":" + rowIndex + ":" + cellIndex, { item: getPlainText(values[1] ?? values[0] ?? "Позиция"), field: getPlainText(headers[cellIndex] ?? "Поле"), value: event.target.value, original: getPlainText(value) })} /></div>
                   </div>
                 );
               })}
@@ -106,10 +106,15 @@ export default function Home() {
   const [mode, setMode] = useState<Mode>("general");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [lastPrompt, setLastPrompt] = useState("");
+  const [tableEdits, setTableEdits] = useState<Record<string, { item: string; field: string; value: string; original: string }>>({});
+  const editedValues = Object.fromEntries(Object.entries(tableEdits).map(([key, edit]) => [key, edit.value]));
 
-  async function sendMessage(event?: FormEvent) {
+  async function sendMessage(event?: FormEvent, overridePrompt?: string) {
     event?.preventDefault();
-    if (!message.trim() || loading) return;
+    const promptToSend = overridePrompt ?? message.trim();
+    if (!promptToSend || loading) return;
+    if (!overridePrompt) setLastPrompt(promptToSend);
 
     setLoading(true);
     setReply("");
@@ -119,12 +124,13 @@ export default function Home() {
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: message.trim(), mode }),
+        body: JSON.stringify({ message: promptToSend, mode }),
       });
 
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Ошибка запроса");
       setReply(data.reply || "ИИ не вернул текст ответа.");
+      setTableEdits({});
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : "Не удалось получить ответ.");
     } finally {
@@ -133,6 +139,13 @@ export default function Home() {
   }
 
   const selectedMode = modes.find((item) => item.id === mode) ?? modes[0];
+  const hasTable = /\|.+\|[\s\S]*?\n\s*\|?[-:| ]+\|/m.test(reply);
+  const MarkdownTable = (props: { children?: ReactNode }) => <ResponsiveMarkdownTable {...props} editedValues={editedValues} onEdit={(key, edit) => setTableEdits((prev) => ({ ...prev, [key]: edit }))} />;
+  function submitEditedEstimate() {
+    const details = Object.values(tableEdits).map((edit) => "- " + edit.item + "; " + edit.field + ": " + (edit.value || "не указано")).join("\n");
+    if (!details || !lastPrompt) return;
+    void sendMessage(undefined, lastPrompt + "\n\nДанные, исправленные в карточках сметы:\n" + details + "\n\nПересчитай смету с учётом этих значений. Сохрани карточки материалов и работ. Не выдумывай неизвестные цены.");
+  }
 
   return (
     <main className="app-shell">
@@ -210,11 +223,10 @@ export default function Home() {
               <h3>Ответ помощника</h3>
             </div>
             <div className="markdown-content">
-              <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ table: ResponsiveMarkdownTable }}>{reply}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ table: MarkdownTable }}>{reply}</ReactMarkdown>
             </div>
-            <button className="secondary-button" type="button" onClick={() => navigator.clipboard?.writeText(reply)}>
-              Копировать ответ
-            </button>
+            {hasTable && <div className="estimate-edit-actions"><p>Измени значения прямо в карточках, затем отправь их ассистенту на пересчёт.</p><button className="primary-button" type="button" disabled={loading || Object.keys(tableEdits).length === 0} onClick={submitEditedEstimate}>{loading ? "Пересчитываю…" : "Отправить данные ассистенту"}</button></div>}
+            <button className="secondary-button" type="button" onClick={() => navigator.clipboard?.writeText(reply)}>Копировать ответ</button>
           </article>
         )}
       </section>
