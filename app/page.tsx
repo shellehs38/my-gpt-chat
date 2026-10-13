@@ -51,16 +51,22 @@ function ResponsiveMarkdownTable({ children }: { children?: ReactNode }) {
           const values = cells.map((cell) => (cell as MarkdownElement).props.children);
           const nonEmpty = values.map((value) => getPlainText(value).trim());
           const firstLabel = (headers[0] ? getPlainText(headers[0]) : "").trim().toLowerCase();
-          const firstValue = (nonEmpty[0] ?? "").toLowerCase();
-          const secondValue = (nonEmpty[1] ?? "").toLowerCase();
+          const firstValue = (nonEmpty[0] ?? "").trim().toLowerCase();
+          const secondValue = (nonEmpty[1] ?? "").trim().toLowerCase();
           const remainingEmpty = nonEmpty.slice(2).every((value) => !value);
-          const isSectionRow = remainingEmpty && (
-            (firstLabel === "статья" && ["материалы", "работы"].includes(secondValue)) ||
-            (nonEmpty.filter(Boolean).length === 1 && nonEmpty[0].length > 0)
-          );
+          const sectionNames = ["материалы", "работы"];
+          const isMaterialsOrWorksRow =
+            remainingEmpty &&
+            firstLabel === "статья" &&
+            ((sectionNames.includes(firstValue) && !secondValue) ||
+              (!firstValue && sectionNames.includes(secondValue)));
+          const onlyOneCellHasValue = nonEmpty.filter(Boolean).length === 1;
+          const isSectionRow = isMaterialsOrWorksRow || (remainingEmpty && onlyOneCellHasValue);
 
           if (isSectionRow) {
-            const title = firstLabel === "статья" && secondValue ? values[1] : values[0];
+            const title = isMaterialsOrWorksRow
+              ? (firstValue ? values[0] : values[1])
+              : values[nonEmpty.findIndex((value) => Boolean(value))];
             return <h4 className="mobile-table-section-heading" key={rowIndex}>{title}</h4>;
           }
 
