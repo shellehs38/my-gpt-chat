@@ -10,6 +10,29 @@ function errorResponse(message: string, status: number) {
   return NextResponse.json({ error: message }, { status });
 }
 
+function ensureScaffoldRows(reply: string): string {
+  const scaffoldRows = [
+    "|  | Монтаж строительных лесов |  |  |  |  | Уточнить необходимость и объём; если леса не нужны или предоставлены заказчиком — указать это здесь. |",
+    "|  | Демонтаж строительных лесов |  |  |  |  | Уточнить необходимость и объём; если леса не нужны или предоставлены заказчиком — указать это здесь. |",
+  ];
+
+  // Add scaffold rows deterministically to each Markdown table under a «Работы» heading.
+  // This is a safeguard: model instructions alone have repeatedly failed to preserve these items.
+  return reply.replace(
+    /((?:^#{1,6}\\s*Работы\\b[^\\n]*|^\\*\\*Работы:?\\*\\*[^\\n]*|^Работы:?)[\\s\\r\\n]*)(\\|[^\\n]*\\n\\|[\\s:|\\-]+\\n(?:\\|[^\\n]*\\n?)+)/gim,
+    (section, heading, table) => {
+      let updated = table;
+      for (const row of scaffoldRows) {
+        const name = row.split("|")[2].trim().toLowerCase();
+        if (!updated.toLowerCase().includes(name)) {
+          updated = updated.replace(/\\n?$/, "\\n") + row + "\\n";
+        }
+      }
+      return heading + updated;
+    }
+  );
+}
+
 function extractOutputText(data: unknown): string {
   if (
     typeof data !== "object" ||
@@ -251,7 +274,10 @@ export async function POST(request: Request) {
       );
     }
 
-    const reply = extractOutputText(data);
+    const rawReply = extractOutputText(data);
+    const reply = isEstimateRequest && /фасад|откос|подсистем|облицовк|сайдинг/i.test(message)
+      ? ensureScaffoldRows(rawReply)
+      : rawReply;
 
     if (!reply) {
       console.error("OpenAI response contained no output text");
