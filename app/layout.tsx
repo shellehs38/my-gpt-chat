@@ -1,20 +1,15 @@
 import type { ReactNode } from "react";
+import "./globals.css";
 
 export const metadata = {
   title: "ИИ-помощник — СВОИ ЛЮДИ",
-  description: "ИИ-помощник для строительного бизнеса",
+  description: "Строительный помощник ООО «СВОИ ЛЮДИ»: технологии, сметы, фасады и управление проектами.",
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: ReactNode;
-}) {
+export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="ru">
-      <body style={{ margin: 0, fontFamily: "Arial, sans-serif" }}>
-        {children}
-      </body>
+      <body>{children}</body>
     </html>
   );
 }
