@@ -171,7 +171,7 @@ export default function Home() {
   }
 
   const selectedMode = modes.find((item) => item.id === mode) ?? modes[0];
-  const hasMarkdownTable = /\\|.+\\|[\\s\\S]*?\\n\\s*\\|?[-:| ]+\\|/m.test(reply);
+  const hasMarkdownTable = /\|.+\|[\s\S]*?\n\s*\|?[-:| ]+\|/m.test(reply);
   const MarkdownTable = (props: { children?: ReactNode }) => (
     <ResponsiveMarkdownTable {...props} editedValues={editedValues} onEdit={(key, edit) => {
       setTableEdits((previous) => {
@@ -185,9 +185,9 @@ export default function Home() {
   function recalculateWithEdits() {
     const changes = Object.values(tableEdits);
     if (!changes.length || !lastPrompt) return;
-    const details = changes.map((edit) => `- ${edit.item} — поле «${edit.field}»: ${edit.value || "не указано"}`).join("\\n");
-    const prompt = lastPrompt + "\\n\\nДанные, которые я изменил непосредственно в таблицах сметы:\\n" + details +
-      "\\n\\nПересчитай смету с учётом этих данных. Сохрани отдельные таблицы «Материалы» и «Работы» и карточное отображение. Не задавай повторно вопросы о данных, которые я уже внёс; неизвестные значения отметь отдельно.";
+    const details = changes.map((edit) => `- ${edit.item} — поле «${edit.field}»: ${edit.value || "не указано"}`).join("\n");
+    const prompt = lastPrompt + "\n\nДанные, которые я изменил непосредственно в таблицах сметы:\n" + details +
+      "\n\nПересчитай смету с учётом этих данных. Сохрани отдельные таблицы «Материалы» и «Работы» и карточное отображение. Не задавай повторно вопросы о данных, которые я уже внёс; неизвестные значения отметь отдельно.";
     void sendMessage(undefined, prompt, true);
   }
 
