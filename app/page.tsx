@@ -66,6 +66,10 @@ function ResponsiveMarkdownTable({ children, editedValues, onEdit }: { children?
   const quantityIndex = normalized.findIndex((name) => /^(количество|кол-во|количество,?\s*ед\.?|кол-во,?\s*ед\.?)$/.test(name));
   const priceIndex = normalized.findIndex((name) => /цена.*единиц|цена за ед|цена,?\s*руб/.test(name));
   const sumIndex = normalized.findIndex((name) => /^(сумма|сумма,?\s*руб\.?|стоимость,?\s*руб\.?)$/.test(name));
+  const filteredBody = Children.toArray(filteredChildren).find((section) => getElementType(section) === "tbody");
+  const rows = filteredBody
+    ? getChildren(filteredBody).filter((row) => getElementType(row) === "tr")
+    : [];
   const tableKey = headerNames.join("|");
   const tableSignature = rows.map((row) => {
     const cells = getChildren(row).filter((cell) => ["th", "td"].includes(getElementType(cell) ?? ""));
@@ -80,11 +84,6 @@ function ResponsiveMarkdownTable({ children, editedValues, onEdit }: { children?
     return Number.isFinite(number) ? number : null;
   };
   const formatNumber = (value: number) => new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 2 }).format(value);
-  const filteredBody = Children.toArray(filteredChildren).find((section) => getElementType(section) === "tbody");
-  const rows = filteredBody
-    ? getChildren(filteredBody).filter((row) => getElementType(row) === "tr")
-    : [];
-
   return (
     <>
       <div className="desktop-table-scroll">
