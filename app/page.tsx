@@ -1,6 +1,6 @@
 "use client";
 
-import { Children, isValidElement, useId, useState } from "react";
+import { Children, isValidElement, useState } from "react";
 import type { ReactNode, ReactElement } from "react";
 import type { FormEvent } from "react";
 import ReactMarkdown from "react-markdown";
@@ -29,16 +29,7 @@ function getPlainText(node: ReactNode): string {
   return getChildren(node).map(getPlainText).join("");
 }
 
-function ResponsiveMarkdownTable({
-  children,
-  editedValues,
-  onEdit,
-}: {
-  children?: ReactNode;
-  editedValues: Record<string, string>;
-  onEdit: (key: string, edit: { table: string; item: string; field: string; value: string; original: string }) => void;
-}) {
-  const tableId = useId();
+function ResponsiveMarkdownTable({ children }: { children?: ReactNode }) {
   const sections = Children.toArray(children);
   const head = sections.find((section) => getElementType(section) === "thead");
   const body = sections.find((section) => getElementType(section) === "tbody");
@@ -46,8 +37,9 @@ function ResponsiveMarkdownTable({
   const headers = headerRow
     ? getChildren(headerRow).filter((cell) => ["th", "td"].includes(getElementType(cell) ?? "")).map((cell) => (cell as MarkdownElement).props.children)
     : [];
-  const rows = body ? getChildren(body).filter((row) => getElementType(row) === "tr") : [];
-  const tableTitle = rows.map((row) => getChildren(row).map((cell) => getPlainText((cell as MarkdownElement).props.children)).join(" ")).join(" ");
+  const rows = body
+    ? getChildren(body).filter((row) => getElementType(row) === "tr")
+    : [];
 
   return (
     <>
@@ -58,60 +50,36 @@ function ResponsiveMarkdownTable({
         {rows.map((row, rowIndex) => {
           const cells = getChildren(row).filter((cell) => ["th", "td"].includes(getElementType(cell) ?? ""));
           const values = cells.map((cell) => (cell as MarkdownElement).props.children);
-          const plainValues = values.map((value) => getPlainText(value).trim());
+          const nonEmpty = values.map((value) => getPlainText(value).trim());
           const firstLabel = (headers[0] ? getPlainText(headers[0]) : "").trim().toLowerCase();
-          const firstValue = (plainValues[0] ?? "").toLowerCase();
-          const secondValue = (plainValues[1] ?? "").toLowerCase();
-          const remainingEmpty = plainValues.slice(2).every((value) => !value);
+          const firstValue = (nonEmpty[0] ?? "").trim().toLowerCase();
+          const secondValue = (nonEmpty[1] ?? "").trim().toLowerCase();
+          const remainingEmpty = nonEmpty.slice(2).every((value) => !value);
           const sectionNames = ["материалы", "работы"];
           const isMaterialsOrWorksRow =
             remainingEmpty &&
             firstLabel === "статья" &&
             ((sectionNames.includes(firstValue) && !secondValue) ||
               (!firstValue && sectionNames.includes(secondValue)));
-          const onlyOneCellHasValue = plainValues.filter(Boolean).length === 1;
+          const onlyOneCellHasValue = nonEmpty.filter(Boolean).length === 1;
           const isSectionRow = isMaterialsOrWorksRow || (remainingEmpty && onlyOneCellHasValue);
 
           if (isSectionRow) {
             const title = isMaterialsOrWorksRow
               ? (firstValue ? values[0] : values[1])
-              : values[plainValues.findIndex(Boolean)];
+              : values[nonEmpty.findIndex((value) => Boolean(value))];
             return <h4 className="mobile-table-section-heading" key={rowIndex}>{title}</h4>;
           }
-
-          const itemName = plainValues.find((value, index) => {
-            const header = getPlainText(headers[index] ?? "").toLowerCase();
-            return header.includes("наимен") || header.includes("работ") || header.includes("материал");
-          }) || plainValues[0] || `Строка ${rowIndex + 1}`;
 
           return (
             <section className="mobile-table-card" key={rowIndex}>
               {cells.map((cell, cellIndex) => {
-                const original = plainValues[cellIndex] ?? "";
-                if (!original && !getPlainText(headers[cellIndex] ?? "").trim()) return null;
-                const field = getPlainText(headers[cellIndex] ?? `Поле ${cellIndex + 1}`).trim();
-                const key = `${tableId}:${rowIndex}:${cellIndex}`;
-                const value = editedValues[key] ?? original;
-                const isLong = value.length > 38;
+                const value = (cell as MarkdownElement).props.children;
+                if (!getPlainText(value).trim()) return null;
                 return (
                   <div className="mobile-table-field" key={cellIndex}>
-                    <label className="mobile-table-label" htmlFor={key}>{field}</label>
-                    <div className="mobile-table-value">
-                      <textarea
-                        id={key}
-                        className="editable-table-value"
-                        aria-label={`${itemName}: ${field}`}
-                        value={value}
-                        rows={isLong ? Math.min(4, Math.max(2, Math.ceil(value.length / 34))) : 1}
-                        onChange={(event) => onEdit(key, {
-                          table: tableTitle.slice(0, 90),
-                          item: itemName,
-                          field,
-                          value: event.target.value,
-                          original,
-                        })}
-                      />
-                    </div>
+                    <span className="mobile-table-label">{headers[cellIndex] ?? `Поле ${cellIndex + 1}`}</span>
+                    <div className="mobile-table-value">{value}</div>
                   </div>
                 );
               })}
@@ -138,31 +106,25 @@ export default function Home() {
   const [mode, setMode] = useState<Mode>("general");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [lastPrompt, setLastPrompt] = useState("");
-  const [tableEdits, setTableEdits] = useState<Record<string, { table: string; item: string; field: string; value: string; original: string }>>({});
-  const editedValues = Object.fromEntries(Object.entries(tableEdits).map(([key, edit]) => [key, edit.value]));
 
-  async function sendMessage(event?: FormEvent, overridePrompt?: string, preserveReply = false) {
+  async function sendMessage(event?: FormEvent) {
     event?.preventDefault();
-    const promptToSend = overridePrompt ?? message.trim();
-    if (!promptToSend || loading) return;
+    if (!message.trim() || loading) return;
 
-    if (!overridePrompt) setLastPrompt(promptToSend);
     setLoading(true);
-    if (!preserveReply) setReply("");
+    setReply("");
     setError("");
 
     try {
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: promptToSend, mode }),
+        body: JSON.stringify({ message: message.trim(), mode }),
       });
 
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Ошибка запроса");
       setReply(data.reply || "ИИ не вернул текст ответа.");
-      setTableEdits({});
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : "Не удалось получить ответ.");
     } finally {
@@ -171,25 +133,6 @@ export default function Home() {
   }
 
   const selectedMode = modes.find((item) => item.id === mode) ?? modes[0];
-  const hasMarkdownTable = /\|.+\|[\s\S]*?\n\s*\|?[-:| ]+\|/m.test(reply);
-  const MarkdownTable = (props: { children?: ReactNode }) => (
-    <ResponsiveMarkdownTable {...props} editedValues={editedValues} onEdit={(key, edit) => {
-      setTableEdits((previous) => {
-        const next = { ...previous };
-        if (edit.value === edit.original) delete next[key];
-        else next[key] = edit;
-        return next;
-      });
-    }} />
-  );
-  function recalculateWithEdits() {
-    const changes = Object.values(tableEdits);
-    if (!changes.length || !lastPrompt) return;
-    const details = changes.map((edit) => `- ${edit.item} — поле «${edit.field}»: ${edit.value || "не указано"}`).join("\n");
-    const prompt = lastPrompt + "\n\nДанные, которые я изменил непосредственно в таблицах сметы:\n" + details +
-      "\n\nПересчитай смету с учётом этих данных. Сохрани отдельные таблицы «Материалы» и «Работы» и карточное отображение. Не задавай повторно вопросы о данных, которые я уже внёс; неизвестные значения отметь отдельно.";
-    void sendMessage(undefined, prompt, true);
-  }
 
   return (
     <main className="app-shell">
@@ -266,22 +209,9 @@ export default function Home() {
               <span className="answer-dot" />
               <h3>Ответ помощника</h3>
             </div>
-            {hasMarkdownTable && (
-              <p className="editable-table-instructions">
-                Заполните или исправьте значения прямо в полях карточек ниже, затем нажмите «Отправить данные ассистенту на пересчёт».
-              </p>
-            )}
             <div className="markdown-content">
-              <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ table: MarkdownTable }}>{reply}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ table: ResponsiveMarkdownTable }}>{reply}</ReactMarkdown>
             </div>
-            {hasMarkdownTable && (
-              <div className="table-edit-actions">
-                <p className="hint">Нажми на значение в карточке, чтобы изменить его. Можно заполнить количество, цену, толщину, тип материала и другие исходные данные.</p>
-                <button className="primary-button" type="button" disabled={loading || Object.keys(tableEdits).length === 0} onClick={recalculateWithEdits}>
-                  {loading ? "Пересчитываю…" : "Отправить данные ассистенту на пересчёт"}
-                </button>
-              </div>
-            )}
             <button className="secondary-button" type="button" onClick={() => navigator.clipboard?.writeText(reply)}>
               Копировать ответ
             </button>
