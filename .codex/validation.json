@@ -1,0 +1,52 @@
+{
+  "baseCommit": "2cc70c27baf847f27168fa4f446bc29422893c14",
+  "cleanInstall": "passed",
+  "typecheck": "passed (next typegen + tsc --noEmit)",
+  "productionBuild": "passed (Next.js 15.5.28)",
+  "unitTests": 29,
+  "unitTestsPassed": 29,
+  "productionDependencyAudit": {
+    "info": 0,
+    "low": 0,
+    "moderate": 0,
+    "high": 0,
+    "critical": 0,
+    "total": 0
+  },
+  "browser": {
+    "fixturesOnly": true,
+    "paidModelCalls": 0,
+    "variantIsolation": true,
+    "unitsBothLayouts": true,
+    "copyExportCurrentValues": true,
+    "desktopEditing": true,
+    "reloadPreservesEdits": true,
+    "snapshotContext": true,
+    "exactFailedRetry": true,
+    "corruptStoragePreservedAndExported": true,
+    "quotaFailureWarns": true,
+    "requestsCaptured": 4
+  },
+  "recovery": {
+    "backupRestore": true,
+    "invalidImportPreservesExistingProject": true,
+    "failedRequestRestoredAfterReload": true,
+    "restoredRetryMatchesOriginalPayload": true,
+    "realModelCalls": 0
+  },
+  "productionSmoke": {
+    "productionBoot": true,
+    "unauthedChatDenied": true,
+    "ownerLogin": true,
+    "signedSessionAccepted": true,
+    "missingProviderKeyDenied": true,
+    "crossOriginLoginDenied": true,
+    "canonicalHostProxyCheck": true,
+    "secureHttpOnlyCookie": true,
+    "realModelCalls": 0
+  },
+  "realModelCalls": 0,
+  "storage": "local browser only, JSON backup export/import",
+  "rateLimit": "per-process, owner-gated; distributed hosting/provider limit required for shared budget",
+  "deployment": "not asserted from local build; verify GitHub/Vercel status separately"
+}

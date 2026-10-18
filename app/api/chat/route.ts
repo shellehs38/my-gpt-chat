@@ -1,317 +1,66 @@
-
 import { NextResponse } from "next/server";
-import { FACADE_WORK_KNOWLEDGE } from "@/lib/facade-work-knowledge";
+import { MAX_BODY_BYTES, MAX_REPLY_LENGTH } from "@/lib/chat-contract";
+import { parseEstimateDocument, serializeEstimateDocument } from "@/lib/estimate";
+import { getAccessConfig, readSession } from "@/lib/server/auth";
+import { buildInstructions, ensureScaffoldRows, extractCompletedOutput, hasBrokenEstimateMarkdown, hasRequiredEstimateSections, isEstimateRequest, isFacadeRequest, requestedFacadeOptions, requiresFullEstimate, validateChatRequest } from "@/lib/server/chat";
+import { BodyError, errorResponse, isSameOriginWrite, readJsonBody } from "@/lib/server/http";
+import { acquireChatSlot, takeRateLimit } from "@/lib/server/rate-limit";
 
-const MAX_BODY_BYTES = 16 * 1024;
-const MAX_MESSAGE_LENGTH = 10_000;
+export const runtime = "nodejs";
 const OPENAI_TIMEOUT_MS = 30_000;
 
-function errorResponse(message: string, status: number) {
-  return NextResponse.json({ error: message }, { status });
-}
-
-function ensureScaffoldRows(reply: string): string {
-  const rowName = "монтаж и демонтаж строительных лесов";
-  const row = "|  | Монтаж и демонтаж строительных лесов |  |  |  |  | Уточнить необходимость и объём; если услуга не требуется или предоставляется заказчиком — указать это здесь. |";
-
-  const headingPattern = /(^#{1,6}\s*Работы\b[^\n]*|^\*\*Работы:?\*\*[^\n]*|^Работы:?)[ \t]*\r?\n/im;
-  const headingMatch = headingPattern.exec(reply);
-  if (!headingMatch || headingMatch.index === undefined) return reply;
-
-  const tableStart = headingMatch.index + headingMatch[0].length;
-  const rest = reply.slice(tableStart);
-  const tableMatch = /^(\|[^\n]*\r?\n\|[ \t:|\-]+\r?\n(?:\|[^\n]*(?:\r?\n|$))*)/m.exec(rest);
-  if (!tableMatch) return reply;
-
-  let table = tableMatch[1];
-  if (table.toLowerCase().includes(rowName)) return reply;
-
-  const newline = table.includes("\r\n") ? "\r\n" : "\n";
-  if (!table.endsWith("\n") && !table.endsWith("\r\n")) table += newline;
-  table += row + newline;
-
-  return reply.slice(0, tableStart) + table + rest.slice(tableMatch[1].length);
-}
-function extractOutputText(data: unknown): string {
-  if (
-    typeof data !== "object" ||
-    data === null ||
-    !("output" in data) ||
-    !Array.isArray(data.output)
-  ) {
-    return "";
-  }
-
-  return data.output
-    .flatMap((item: unknown) => {
-      if (
-        typeof item !== "object" ||
-        item === null ||
-        !("content" in item) ||
-        !Array.isArray(item.content)
-      ) {
-        return [];
-      }
-
-      return item.content.flatMap((part: unknown) => {
-        if (
-          typeof part !== "object" ||
-          part === null ||
-          !("type" in part) ||
-          part.type !== "output_text" ||
-          !("text" in part) ||
-          typeof part.text !== "string"
-        ) {
-          return [];
-        }
-
-        return [part.text];
-      });
-    })
-    .join("")
-    .trim();
-}
-
 export async function POST(request: Request) {
-  const contentLength = request.headers.get("content-length");
-
-  if (contentLength !== null) {
-    const size = Number(contentLength);
-
-    if (!Number.isFinite(size) || size < 0) {
-      return errorResponse("Некорректный размер запроса.", 400);
-    }
-
-    if (size > MAX_BODY_BYTES) {
-      return errorResponse("Запрос слишком большой.", 413);
-    }
+  if (!isSameOriginWrite(request)) return errorResponse("Запрос должен быть отправлен с сайта помощника.", 403);
+  const config = getAccessConfig();
+  if (!config) return errorResponse("Доступ закрыт: администратору необходимо настроить пароль и секрет сессии на сервере.", 503);
+  const session = readSession(request, config);
+  if (!session) return errorResponse("Войдите в помощник, чтобы отправить сообщение.", 401);
+  // A single owner budget also constrains newly issued sessions and spoofed IPs.
+  const window = 10 * 60 * 1000;
+  if (!takeRateLimit(`chat:owner:${session.subject}`, 20, window) || !takeRateLimit(`chat:session:${session.id}`, 20, window)) {
+    return errorResponse("Лимит запросов исчерпан. Повторите через 10 минут.", 429, { "Retry-After": "600" });
   }
-
-  const reader = request.body?.getReader();
-
-  if (!reader) {
-    return errorResponse("Не удалось прочитать запрос.", 400);
-  }
-
-  const chunks: Uint8Array[] = [];
-  let totalBytes = 0;
-  let rawBody: string;
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-
-      if (done) {
-        break;
-      }
-
-      totalBytes += value.byteLength;
-
-      if (totalBytes > MAX_BODY_BYTES) {
-        void reader.cancel().catch(() => undefined);
-        return errorResponse("Запрос слишком большой.", 413);
-      }
-
-      chunks.push(value);
-    }
-
-    const bodyBytes = new Uint8Array(totalBytes);
-    let offset = 0;
-
-    for (const chunk of chunks) {
-      bodyBytes.set(chunk, offset);
-      offset += chunk.byteLength;
-    }
-
-    rawBody = new TextDecoder().decode(bodyBytes);
-  } catch {
-    return errorResponse("Не удалось прочитать запрос.", 400);
-  } finally {
-    reader.releaseLock();
-  }
-
-  let body: unknown;
-
-  try {
-    body = JSON.parse(rawBody);
-  } catch {
-    return errorResponse("Некорректный формат запроса.", 400);
-  }
-
-  if (
-    typeof body !== "object" ||
-    body === null ||
-    !("message" in body) ||
-    typeof body.message !== "string"
-  ) {
-    return errorResponse("Введите текст сообщения.", 400);
-  }
-
-  const message = body.message.trim();
-  const requestMode = "mode" in body && typeof body.mode === "string" ? body.mode : "general";
-  const isEstimateRequest = requestMode === "estimate" || requestMode === "facade" || /смет[аыуе]|рассчита|стоимост[ьи]|количеств[оа].{0,30}материал/i.test(message);
-  const asksNoInsulationOnly = /без утеплени[яе]/i.test(message) && !/(с утеплением и без|с утеплением,?\s*и?\s*без|оба вариант|два вариант)/i.test(message);
-  const asksInsulationOnly = /с утеплением/i.test(message) && !/(с утеплением и без|с утеплением,?\s*и?\s*без|оба вариант|два вариант)/i.test(message);
-  const asksBothFacadeOptions = /(с утеплением и без|с утеплением,?\s*и?\s*без|оба вариант|два вариант)/i.test(message);
-  const requestedScope = asksNoInsulationOnly
-    ? "ПОЛЬЗОВАТЕЛЬ ПРОСИТ ТОЛЬКО ФАСАД БЕЗ УТЕПЛЕНИЯ. Выдай ровно один вариант без утепления. Не добавляй вариант с утеплением. "
-    : asksInsulationOnly
-      ? "ПОЛЬЗОВАТЕЛЬ ПРОСИТ ТОЛЬКО ФАСАД С УТЕПЛЕНИЕМ. Выдай ровно один вариант с утеплением. Не добавляй вариант без утепления. "
-      : asksBothFacadeOptions
-        ? "ПОЛЬЗОВАТЕЛЬ ПРОСИТ ДВА ВАРИАНТА: с утеплением и без утепления. Выдай оба. "
-        : "";
-
-  if (!message) {
-    return errorResponse("Введите текст сообщения.", 400);
-  }
-
-  if (message.length > MAX_MESSAGE_LENGTH) {
-    return errorResponse(
-      `Сообщение не должно превышать ${MAX_MESSAGE_LENGTH} символов.`,
-      413
-    );
-  }
-
+  let body;
+  try { body = validateChatRequest(await readJsonBody(request, MAX_BODY_BYTES)); }
+  catch (error) { return error instanceof BodyError ? errorResponse(error.message, error.status) : errorResponse("Не удалось прочитать запрос.", 400); }
   const apiKey = process.env.OPENAI_API_KEY;
-
-  if (!apiKey) {
-    console.error("OPENAI_API_KEY is not configured");
-
-    return errorResponse(
-      "Сервис ИИ временно недоступен. Проверьте настройки сервера.",
-      503
-    );
-  }
-
+  if (!apiKey) return errorResponse("Сервис ИИ временно недоступен. Проверьте настройки сервера.", 503);
+  const release = acquireChatSlot();
+  if (!release) return errorResponse("Уже выполняются два запроса. Дождитесь ответа и повторите.", 429, { "Retry-After": "30" });
   const controller = new AbortController();
-  const timeout = setTimeout(
-    () => controller.abort(),
-    OPENAI_TIMEOUT_MS
-  );
-
+  const timeout = setTimeout(() => controller.abort(), OPENAI_TIMEOUT_MS);
   try {
-    const response = await fetch(
-      "https://api.openai.com/v1/responses",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model: "gpt-4.1-mini",
-          instructions:
-            "Ты ИИ-помощник строительной компании ООО СВОИ ЛЮДИ в Иркутске. " +
-            "Помогай со строительными сметами, фасадами, материалами, коммерческими предложениями, договорами и управлением проектами. " +
-            "Не выдумывай цены и технические характеристики. " +
-            "ПРАВИЛА ПРОВЕРКИ СМЕТЫ И ФАСАДНЫХ РАБОТ: " +
-            "1) Проверяй смету построчно: количество × цена за единицу = сумма; отдельно складывай материалы, работы и общий итог; проверяй, что материалы и работы не смешаны; отмечай пустые, дублирующиеся и противоречивые позиции. Не исправляй исходные данные молча. " +
-            "2) Все найденные несоответствия записывай в «Примечание» соответствующей строки с пометкой «ПРОВЕРИТЬ: ...». В конце добавляй раздел «Проверка сметы» с арифметическими проверками, ошибками и вопросами. Не утверждай, что проверка пройдена, если исходных данных недостаточно. " +
-            "3) Сохраняй наименования и порядок позиций из базовой таблицы сметы. Не заменяй, не переименовывай и не удаляй ни одной исходной позиции. Не расширяй перечень работ произвольными дополнительными строками. Единственное обязательное дополнение к исходному перечню работ — одна строка «Монтаж и демонтаж строительных лесов». Не разделяй монтаж и демонтаж на две строки. Если такой позиции ещё нет в исходной таблице, добавь только её; не добавляй аренду, доставку, вывоз или другие позиции, если пользователь отдельно этого не просил. Количество, цена и сумма для этой позиции остаются пустыми, если данных нет; в примечании укажи «Уточнить необходимость и объём». Не меняй остальные строки, их порядок и примечания. " +
-            "4) ОТДЕЛЬНО учитывай оконные и дверные откосы: они считаются отдельными позициями работ и при необходимости материалов, не включай их молча в площадь фасада. Всегда проверь, включены ли они в объём. Уточняй количество окон/дверей, ширину и высоту проёмов, глубину откоса, какие стороны обрабатываются, материал отделки, утепление откосов, примыкания/герметизацию, отливы/капельники и доборные элементы. Длину откосов рассчитывай по фактическим замерам в погонных метрах; не выводи её из площади фасада. " +
-            "5) Запрашивай недостающие замеры: площадь фасада и правило учёта проёмов; размеры каждого типа оконных/дверных проёмов и глубину откосов; длины углов и примыканий; длины цокольного и верхнего завершения; размеры отливов, парапетов и доборных элементов; высоту работ и условия доступа; тип основания; фасадную систему и облицовку; шаг/схему подсистемы по проекту или инструкции производителя. Не назначай шаг подсистемы, расход крепежа, толщину утеплителя и другие технические параметры без подтверждённых данных. " +
-            "6) Каждый недостающий параметр, который нужен для расчёта, добавляй отдельной строкой в редактируемую Markdown-таблицу «Исходные данные для уточнения» со столбцами «№ | Параметр | Значение | Примечание». Ячейка «Значение» должна быть пустой. Не перечисляй нужные замеры только текстовым списком. " +
-            "7) НЕ МЕНЯЙ СТРУКТУРУ таблицы «Исходные данные для уточнения» и НЕ УДАЛЯЙ/НЕ ПЕРЕИМЕНОВЫВАЙ уже предусмотренные пункты. Сохраняй все имеющиеся строки и только ДОБАВЛЯЙ недостающие строки. Для замеров проёмов обязательно отдельные строки: количество окон; ширина оконного проёма; высота оконного проёма; глубина оконного откоса; количество дверей; ширина дверного проёма; высота дверного проёма; глубина дверного откоса; количество сторон откоса, подлежащих отделке; материал отделки откосов; нужны ли утепление откосов, отливы и герметизация. Не объединяй ширину, высоту/длину и глубину в одну строку или одну ячейку. Для окон и дверей используй отдельные строки, единицы измерения указывай в названии параметра (ширина/высота — мм или м, глубина — мм, длина отделки — пог. м). Если размеры нескольких проёмов различаются, добавь отдельные строки по каждому типоразмеру или проёму. Все поля «Значение» оставляй пустыми для ручного ввода; не подставляй слова-заполнители. " +
-            (isEstimateRequest
-              ? requestedScope + "Для сметы обязательно сначала выдай готовую предварительную смету, а не только вопросы. Используй корректные Markdown-таблицы с заголовком и строкой-разделителем. " +
-                "Для каждого варианта сделай отдельные таблицы «Материалы» и «Работы». " +
-                "Столбцы материалов и работ: №, Наименование, Ед. изм., Количество, Цена за единицу, Сумма, Примечание. " +
-                "Неизвестные значения указывай как «требует уточнения», не выдумывай цены. Если площадь известна, используй её как предварительное количество только там, где это оправдано, и поясни ограничения. " +
-                "После таблиц добавь отдельную Markdown-таблицу «Исходные данные для уточнения» со столбцами «№ | Параметр | Значение | Примечание». Внеси в неё каждый недостающий исходный параметр, который нужен для точного расчёта (например, площадь, тип облицовки, параметры каркаса, тип/толщина утеплителя, если он предусмотрен). Ячейки «Значение» оставляй пустыми, чтобы пользователь мог заполнить их прямо в карточках. Не перечисляй эти же параметры только текстовым списком: каждый пункт из списка недостающих данных обязан присутствовать отдельной строкой этой таблицы. Не заменяй таблицы списками или абзацами."
-              : "Если данных недостаточно, задай уточняющие вопросы.") +
-            (/фасад|откос|подсистем|облицовк|сайдинг/i.test(message) ? FACADE_WORK_KNOWLEDGE : ""),
-          input: isEstimateRequest
-            ? message +
-              "\n\n" + requestedScope +
-              "ОБЯЗАТЕЛЬНЫЙ ФОРМАТ ОТВЕТА: выдай смету именно Markdown-таблицами, не списками и не текстовыми шаблонами с подчёркиваниями. " +
-              (asksNoInsulationOnly
-                ? "Выведи только один заголовок «Вариант — без утепления», таблицу «Материалы» и отдельную таблицу «Работы». Не упоминай и не составляй вариант с утеплением. "
-                : asksInsulationOnly
-                  ? "Выведи только один заголовок «Вариант — с утеплением», таблицу «Материалы» и отдельную таблицу «Работы». Не упоминай и не составляй вариант без утепления. "
-                  : "Сначала заголовок «Вариант 1 — без утепления», затем таблица «Материалы» со столбцами «№ | Наименование | Ед. изм. | Количество | Цена за единицу, руб. | Сумма, руб. | Примечание», затем отдельная таблица «Работы» с теми же столбцами. После этого так же оформи «Вариант 2 — с утеплением» с отдельными таблицами материалов и работ. ") +
-              "Используй синтаксис Markdown: строка заголовков, следующая строка с разделителями вида |---|---|---|, затем строки позиций. " +
-              "Для полей «Количество», «Цена за единицу» и «Сумма» оставляй ячейки пустыми, если пользователь не предоставил значения. Не пиши внутри этих ячеек «требует уточнения», «заполните количество» или другие подсказки — пользователь вводит данные сам. Цены не выдумывай. " +
-              "ОБЯЗАТЕЛЬНОЕ ПРАВИЛО ДЛЯ ТАБЛИЦЫ «РАБОТЫ»: добавляй одну общую строку «Монтаж и демонтаж строительных лесов». Не разделяй её на две позиции. Если необходимость/объём не подтверждены, оставь «Количество», «Цена за единицу» и «Сумма» пустыми, а в примечании напиши «Уточнить необходимость и объём». Не добавляй аренду, доставку или вывоз лесов, если пользователь отдельно этого не просил. Перед отправкой ответа проверь, что общая строка присутствует в таблице «Работы». " +
-              "Не заменяй таблицы списками. Если применимо или неизвестно, включи отдельные позиции «Монтаж оконных откосов» и «Монтаж дверных откосов»; если необходимость/размеры не подтверждены, оставь количество и цену пустыми и добавь в примечание «Уточнить необходимость и выполнить замер». Материалы откосов учитывай отдельно после выбора типа отделки. Обязательно выведи таблицу «Исходные данные для уточнения» с пустыми ячейками значений и раздел «Проверка сметы». Перепроверь каждую введённую сумму и итоги материалов/работ раздельно. В таблице исходных данных сохрани все ранее предусмотренные пункты и добавь ОБЯЗАТЕЛЬНО отдельные строки: «Количество окон, шт.», «Ширина оконного проёма, мм», «Высота оконного проёма, мм», «Глубина оконного откоса, мм», «Длина оконных откосов, пог. м», «Количество дверей, шт.», «Ширина дверного проёма, мм», «Высота дверного проёма, мм», «Глубина дверного откоса, мм», «Длина дверных откосов, пог. м», «Количество обрабатываемых сторон откоса, шт.». Не объединяй эти параметры. Не удаляй и не заменяй ими другие пункты таблицы."
-            : message,
-          max_output_tokens: 2800,
-          store: false,
-        }),
-        signal: controller.signal,
-        cache: "no-store",
-      }
-    );
-
-    if (!response.ok) {
-      console.error("OpenAI API request failed", {
-        status: response.status,
-      });
-
-      if (response.status === 429) {
-        return errorResponse(
-          "Сервис ИИ временно недоступен. Попробуйте позже.",
-          503
-        );
-      }
-
-      return errorResponse(
-        "Не удалось получить ответ ИИ. Попробуйте позже.",
-        502
-      );
-    }
-
+    const response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model: process.env.OPENAI_MODEL?.trim() || "gpt-4.1-mini",
+        instructions: buildInstructions(body),
+        input: [...(body.history ?? []), { role: "user", content: body.message }],
+        max_output_tokens: 8000,
+        store: false,
+      }),
+      signal: controller.signal,
+      cache: "no-store",
+    });
+    if (!response.ok) return errorResponse(response.status === 429 ? "Сервис ИИ временно недоступен. Попробуйте позже." : "Не удалось получить ответ ИИ. Попробуйте позже.", response.status === 429 ? 503 : 502);
     let data: unknown;
-
-    try {
-      data = await response.json();
-    } catch {
-      console.error("OpenAI returned invalid JSON");
-
-      return errorResponse(
-        "Сервис ИИ вернул некорректный ответ.",
-        502
-      );
+    try { data = await response.json(); }
+    catch { return errorResponse("Сервис ИИ вернул некорректный ответ.", 502); }
+    const raw = extractCompletedOutput(data);
+    if (!raw || raw.length > MAX_REPLY_LENGTH || hasBrokenEstimateMarkdown(raw) ||
+        (requiresFullEstimate(body) && !hasRequiredEstimateSections(raw, requestedFacadeOptions(body)))) {
+      return errorResponse("ИИ вернул неполный или повреждённый ответ. Смета не заменена. Повторите запрос или разделите его на меньшие части.", 502);
     }
-
-    const rawReply = extractOutputText(data);
-    const reply = isEstimateRequest && /фасад|откос|подсистем|облицовк|сайдинг/i.test(message)
-      ? ensureScaffoldRows(rawReply)
-      : rawReply;
-
-    if (!reply) {
-      console.error("OpenAI response contained no output text");
-
-      return errorResponse(
-        "ИИ не вернул текст ответа. Попробуйте ещё раз.",
-        502
-      );
-    }
-
-    return NextResponse.json(
-      { reply },
-      {
-        headers: {
-          "Cache-Control": "no-store",
-        },
-      }
-    );
+    const withScaffold = isEstimateRequest(body) && isFacadeRequest(body) ? ensureScaffoldRows(raw) : raw;
+    const document = parseEstimateDocument(withScaffold);
+    // Browser and API share precisely the same calculation/serialization path.
+    const reply = document.blocks.some((block) => block.type === "table") ? serializeEstimateDocument(document) : withScaffold;
+    return NextResponse.json({ reply }, { headers: { "Cache-Control": "no-store" } });
   } catch {
-    if (controller.signal.aborted) {
-      console.error("OpenAI API request timed out");
-
-      return errorResponse(
-        "Сервис ИИ отвечает слишком долго. Попробуйте ещё раз.",
-        504
-      );
-    }
-
-    console.error("Failed to communicate with OpenAI API");
-
-    return errorResponse(
-      "Не удалось связаться с сервисом ИИ. Попробуйте позже.",
-      502
-    );
+    return errorResponse(controller.signal.aborted ? "Сервис ИИ отвечает слишком долго. Попробуйте ещё раз." : "Не удалось связаться с сервисом ИИ. Попробуйте позже.", controller.signal.aborted ? 504 : 502);
   } finally {
     clearTimeout(timeout);
+    release();
   }
 }

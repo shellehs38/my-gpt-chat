@@ -6,3 +6,8 @@ node_modules/
 dist/
 build/
 .DS_Store
+
+
+*.tsbuildinfo
+playwright-report/
+test-results/

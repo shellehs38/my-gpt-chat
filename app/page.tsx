@@ -1,177 +1,14 @@
 "use client";
 
-import { Children, cloneElement, createContext, isValidElement, useContext, useState } from "react";
-import type { ReactNode, ReactElement } from "react";
-import type { FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { ChangeEvent, FormEvent } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-
-
-type Mode = "general" | "estimate" | "engineering" | "facade" | "business" | "documents";
-
-type MarkdownElement = ReactElement<{ children?: ReactNode }>;
-
-type EstimateEdit = { item: string; field: string; value: string; original: string };
-type EstimateEditContextValue = {
-  editedValues: Record<string, string>;
-  onEdit: (key: string, edit: EstimateEdit) => void;
-};
-const EstimateEditContext = createContext<EstimateEditContextValue>({
-  editedValues: {},
-  onEdit: () => {},
-});
-
-function getChildren(node: ReactNode): ReactNode[] {
-  if (!isValidElement(node)) return [];
-  return Children.toArray((node as MarkdownElement).props.children);
-}
-
-function getElementType(node: ReactNode): string | undefined {
-  if (!isValidElement(node)) return undefined;
-  const type = (node as MarkdownElement).type;
-  return typeof type === "string" ? type : undefined;
-}
-
-function getPlainText(node: ReactNode): string {
-  if (typeof node === "string" || typeof node === "number") return String(node);
-  if (Array.isArray(node)) return node.map(getPlainText).join("");
-  if (!isValidElement(node)) return "";
-  return getChildren(node).map(getPlainText).join("");
-}
-
-function ResponsiveMarkdownTable({ children, editedValues, onEdit }: { children?: ReactNode; editedValues: Record<string, string>; onEdit: (key: string, edit: EstimateEdit) => void }) {
-  const sections = Children.toArray(children);
-  const head = sections.find((section) => getElementType(section) === "thead");
-  const body = sections.find((section) => getElementType(section) === "tbody");
-  const headerRow = head ? getChildren(head).find((row) => getElementType(row) === "tr") : undefined;
-  const headers = headerRow
-    ? getChildren(headerRow).filter((cell) => ["th", "td"].includes(getElementType(cell) ?? "")).map((cell) => (cell as MarkdownElement).props.children)
-    : [];
-  const originalHeaderNames = headers.map((header) => getPlainText(header).trim());
-  const unitIndex = originalHeaderNames.findIndex((name) => /^(ед\.?\s*изм\.?|единица измерения|ед\.?\s*измерения)$/i.test(name));
-  const filteredChildren = Children.map(children, (section) => {
-    const sectionType = getElementType(section);
-    if (!isValidElement(section) || !["thead", "tbody"].includes(sectionType ?? "")) return section;
-    const rows = getChildren(section).map((row) => {
-      if (!isValidElement(row) || getElementType(row) !== "tr") return row;
-      const cells = getChildren(row);
-      return cloneElement(row as ReactElement<{ children?: ReactNode }>, {
-        children: cells.filter((_, index) => index !== unitIndex),
-      });
-    });
-    return cloneElement(section as ReactElement<{ children?: ReactNode }>, { children: rows });
-  });
-  const headerNames = originalHeaderNames.filter((_, index) => index !== unitIndex);
-  const normalized = headerNames.map((name) => name.toLowerCase());
-  const quantityIndex = normalized.findIndex((name) => /^(количество|кол-во|количество,?\s*ед\.?|кол-во,?\s*ед\.?)$/.test(name));
-  const priceIndex = normalized.findIndex((name) => /цена.*единиц|цена за ед|цена,?\s*руб/.test(name));
-  const sumIndex = normalized.findIndex((name) => /^(сумма|сумма,?\s*руб\.?|стоимость,?\s*руб\.?)$/.test(name));
-  const filteredBody = Children.toArray(filteredChildren).find((section) => getElementType(section) === "tbody");
-  const rows = filteredBody
-    ? getChildren(filteredBody).filter((row) => getElementType(row) === "tr")
-    : [];
-  const tableKey = headerNames.join("|");
-  const tableSignature = rows.map((row) => {
-    const cells = getChildren(row).filter((cell) => ["th", "td"].includes(getElementType(cell) ?? ""));
-    return getPlainText((cells[1] as MarkdownElement | undefined)?.props.children ?? (cells[0] as MarkdownElement | undefined)?.props.children ?? "").trim();
-  }).filter(Boolean).slice(0, 3).join("|");
-  const scopedTableKey = tableKey + "::" + tableSignature;
-  const cellKey = (rowIndex: number, cellIndex: number) => scopedTableKey + ":" + rowIndex + ":" + cellIndex;
-  const parseNumber = (value: string): number | null => {
-    const cleaned = value.replace(/\s/g, "").replace(/руб\.?/gi, "").replace(",", ".");
-    if (!cleaned || !/^-?\d+(\.\d+)?$/.test(cleaned)) return null;
-    const number = Number(cleaned);
-    return Number.isFinite(number) ? number : null;
-  };
-  const formatNumber = (value: number) => new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 2 }).format(value);
-  return (
-    <>
-      <div className="desktop-table-scroll">
-        <table>{filteredChildren}</table>
-      </div>
-      <div className="mobile-table-cards">
-        {rows.map((row, rowIndex) => {
-          const cells = getChildren(row).filter((cell) => ["th", "td"].includes(getElementType(cell) ?? ""));
-          const values = cells.map((cell) => (cell as MarkdownElement).props.children);
-          const nonEmpty = values.map((value) => getPlainText(value).trim());
-          const firstLabel = (headers[0] ? getPlainText(headers[0]) : "").trim().toLowerCase();
-          const firstValue = (nonEmpty[0] ?? "").trim().toLowerCase();
-          const secondValue = (nonEmpty[1] ?? "").trim().toLowerCase();
-          const remainingEmpty = nonEmpty.slice(2).every((value) => !value);
-          const sectionNames = ["материалы", "работы"];
-          const isMaterialsOrWorksRow =
-            remainingEmpty &&
-            firstLabel === "статья" &&
-            ((sectionNames.includes(firstValue) && !secondValue) ||
-              (!firstValue && sectionNames.includes(secondValue)));
-          const onlyOneCellHasValue = nonEmpty.filter(Boolean).length === 1;
-          const isSectionRow = isMaterialsOrWorksRow || (remainingEmpty && onlyOneCellHasValue);
-
-          if (isSectionRow) {
-            const title = isMaterialsOrWorksRow
-              ? (firstValue ? values[0] : values[1])
-              : values[nonEmpty.findIndex((value) => Boolean(value))];
-            return <h4 className="mobile-table-section-heading" key={rowIndex}>{title}</h4>;
-          }
-
-          const itemName = getPlainText(values[1] ?? values[0] ?? "Позиция");
-          const rawQuantity = quantityIndex >= 0 ? (editedValues[cellKey(rowIndex, quantityIndex)] ?? getPlainText(values[quantityIndex] ?? "")) : "";
-          const rawPrice = priceIndex >= 0 ? (editedValues[cellKey(rowIndex, priceIndex)] ?? getPlainText(values[priceIndex] ?? "")) : "";
-          const quantity = parseNumber(rawQuantity);
-          const price = parseNumber(rawPrice);
-          const calculatedSum = quantity !== null && price !== null ? formatNumber(quantity * price) : "";
-
-          return (
-            <section className="mobile-table-card" key={rowIndex}>
-              {cells.map((cell, cellIndex) => {
-                const value = (cell as MarkdownElement).props.children;
-                const label = headerNames[cellIndex] ?? `Поле ${cellIndex + 1}`;
-                const key = cellKey(rowIndex, cellIndex);
-                const isCalculatedSum = cellIndex === sumIndex && quantityIndex >= 0 && priceIndex >= 0;
-                const displayedValue = isCalculatedSum
-                  ? calculatedSum
-                  : editedValues[key] ?? getPlainText(value);
-                return (
-                  <div className="mobile-table-field" key={cellIndex}>
-                    <span className="mobile-table-label">{label}</span>
-                    <div className="mobile-table-value">
-                      <textarea
-                        className="estimate-card-input"
-                        aria-label={label}
-                        value={displayedValue}
-                        readOnly={isCalculatedSum}
-                        inputMode={cellIndex === quantityIndex || cellIndex === priceIndex ? "decimal" : "text"}
-                        rows={Math.min(4, Math.max(1, Math.ceil(displayedValue.length / 30)))}
-                        onChange={(event) => {
-                          const newValue = event.target.value;
-                          onEdit(key, { item: itemName, field: label, value: newValue, original: getPlainText(value) });
-                          if ((cellIndex === quantityIndex || cellIndex === priceIndex) && sumIndex >= 0 && quantityIndex >= 0 && priceIndex >= 0) {
-                            const nextQuantityText = cellIndex === quantityIndex ? newValue : rawQuantity;
-                            const nextPriceText = cellIndex === priceIndex ? newValue : rawPrice;
-                            const nextQuantity = parseNumber(nextQuantityText);
-                            const nextPrice = parseNumber(nextPriceText);
-                            const nextSum = nextQuantity !== null && nextPrice !== null ? formatNumber(nextQuantity * nextPrice) : "";
-                            const sumValue = nextSum || "Заполните количество и цену";
-                            onEdit(cellKey(rowIndex, sumIndex), { item: itemName, field: headerNames[sumIndex] ?? "Сумма, руб.", value: sumValue, original: getPlainText(values[sumIndex] ?? "") });
-                          }
-                        }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </section>
-          );
-        })}
-      </div>
-    </>
-  );
-}
-
-function MarkdownTable(props: { children?: ReactNode }) {
-  const editContext = useContext(EstimateEditContext);
-  return <ResponsiveMarkdownTable {...props} {...editContext} />;
-}
+import { calculateEstimateDocument, createDocumentId, displayedCell, formatEstimateProse, formatKopecks, parseEstimateDocument, serializeEstimateDocument, updateEstimateCell } from "@/lib/estimate";
+import type { CalculatedTable, EstimateDocument, EstimateRow, EstimateTable } from "@/lib/estimate";
+import { buildChatPayload, decodeWorkspace, emptyWorkspace, loadWorkspace, saveWorkspace, MAX_WORKSPACE_BYTES, WORKSPACE_STORAGE_KEY } from "@/lib/workspace-storage";
+import type { ChatPayload, FacadeOptions, Mode, Workspace } from "@/lib/workspace-storage";
+import { MAX_MESSAGE_LENGTH, MAX_HISTORY_MESSAGE_LENGTH, MAX_BODY_BYTES } from "@/lib/chat-contract";
 
 const modes: { id: Mode; label: string; description: string; prompt: string }[] = [
   { id: "general", label: "Общий помощник", description: "Дом, стройка и организация работ", prompt: "Опиши задачу, объект или вопрос по строительству." },
@@ -181,148 +18,159 @@ const modes: { id: Mode; label: string; description: string; prompt: string }[] 
   { id: "business", label: "Бизнес и продажи", description: "Клиенты, прибыль, планирование и закупки", prompt: "Опиши ситуацию в бизнесе или задачу по работе с клиентом." },
   { id: "documents", label: "Документы", description: "Коммерческие предложения, договоры и акты", prompt: "Укажи вид документа, стороны, объект, объём работ и известные условия." },
 ];
+type AuthState = { authenticated: boolean; configured: boolean };
+const bytes = (value: unknown) => new TextEncoder().encode(typeof value === "string" ? value : JSON.stringify(value)).byteLength;
+function download(content: string, name: string, type: string) {
+  const url = URL.createObjectURL(new Blob([content], { type }));
+  const link = document.createElement("a"); link.href = url; link.download = name; link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+function TableEditor({ table, calculation, onEdit }: { table: EstimateTable; calculation: CalculatedTable; onEdit: (tableId: string, rowId: string, index: number, value: string) => void }) {
+  const extraSum = calculation.hasCalculation && calculation.sumIndex < 0;
+  const headers = extraSum ? [...table.headers, "Сумма, руб. (расчёт)"] : table.headers;
+  const value = (row: EstimateRow, index: number) => {
+    if (index < table.headers.length) return displayedCell(row, index, calculation);
+    const result = calculation.rows.find((item) => item.rowId === row.id)!;
+    return result.kind === "section" ? "" : result.amountKopecks === null ? "Не рассчитано" : `${formatKopecks(result.amountKopecks)}${result.complete ? "" : " (неполно)"}`;
+  };
+  const field = (row: EstimateRow, index: number, mobile: boolean) => {
+    const readOnly = index === calculation.sumIndex && calculation.hasCalculation || index >= table.headers.length;
+    return <textarea className="estimate-card-input" aria-label={`${table.title}, строка ${table.rows.indexOf(row) + 1}: ${headers[index]}`} data-cell-id={`${row.id}:${index}`} value={value(row, index)} readOnly={readOnly} rows={mobile ? Math.min(5, Math.max(1, Math.ceil(value(row, index).length / 25))) : 2} inputMode={index === calculation.quantityIndex || index === calculation.priceIndex ? "decimal" : "text"} maxLength={2000} onChange={(event) => onEdit(table.id, row.id, index, event.target.value)} />;
+  };
+  return <section className="estimate-table" aria-label={`Таблица: ${table.title}`}>
+    <div className="desktop-table-scroll"><table><thead><tr>{headers.map((header, index) => <th key={index} scope="col">{header}</th>)}</tr></thead><tbody>{table.rows.map((row) => <tr key={row.id} data-row-id={row.id}>{headers.map((_, index) => <td key={index}>{field(row, index, false)}</td>)}</tr>)}</tbody></table></div>
+    <div className="mobile-table-cards">{table.rows.map((row) => <section className="mobile-table-card" key={row.id} data-row-id={row.id}>{headers.map((header, index) => <div className="mobile-table-field" key={index}><span className="mobile-table-label">{header}</span><div className="mobile-table-value">{field(row, index, true)}</div></div>)}</section>)}</div>
+    {calculation.hasCalculation && <p className={`calculation-summary ${calculation.complete ? "" : "calculation-incomplete"}`}><strong>{calculation.complete ? "Арифметический итог" : "Известная часть"}: {formatKopecks(calculation.knownTotalKopecks)} ₽.</strong> {calculation.complete ? "Рассчитано из количества и цены каждой позиции. Проверьте объёмы и актуальность цен." : "Полный итог не определён. Заполните количество и цену всех позиций; неизвестные значения не равны нулю."}</p>}
+  </section>;
+}
+function DocumentEditor({ document, onEdit }: { document: EstimateDocument; onEdit: (tableId: string, rowId: string, index: number, value: string) => void }) {
+  const calculation = useMemo(() => calculateEstimateDocument(document), [document]);
+  return <div className="markdown-content">{document.blocks.map((block) => block.type === "table" ? <TableEditor key={block.id} table={block} calculation={calculation.tables.find((item) => item.tableId === block.id)!} onEdit={onEdit} /> : <ReactMarkdown key={block.id} remarkPlugins={[remarkGfm]}>{formatEstimateProse(block.text, calculation.hasCalculation)}</ReactMarkdown>)}</div>;
+}
 
 export default function Home() {
-  const [message, setMessage] = useState("");
-  const [reply, setReply] = useState("");
-  const [mode, setMode] = useState<Mode>("general");
+  const [workspace, setWorkspace] = useState<Workspace>(emptyWorkspace);
+  const [hydrated, setHydrated] = useState(false);
+  const [storageBlocked, setStorageBlocked] = useState(false);
+  const [storageError, setStorageError] = useState("");
+  const [auth, setAuth] = useState<AuthState | null>(null);
+  const [authError, setAuthError] = useState("");
+  const [password, setPassword] = useState("");
+  const [authLoading, setAuthLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [lastPrompt, setLastPrompt] = useState("");
-  const [tableEdits, setTableEdits] = useState<Record<string, { item: string; field: string; value: string; original: string }>>({});
-  const editedValues = Object.fromEntries(Object.entries(tableEdits).map(([key, edit]) => [key, edit.value]));
-
-  async function sendMessage(event?: FormEvent, overridePrompt?: string) {
-    event?.preventDefault();
-    const promptToSend = overridePrompt ?? message.trim();
-    if (!promptToSend || loading) return;
-    if (!overridePrompt) setLastPrompt(promptToSend);
-
-    setLoading(true);
-    setReply("");
-    setError("");
-
-    try {
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: promptToSend, mode }),
-      });
-
+  const [notice, setNotice] = useState("");
+  const inFlight = useRef(false);
+  useEffect(() => {
+    try { setWorkspace(loadWorkspace(window.localStorage)); }
+    catch (cause) { setStorageError(cause instanceof Error ? cause.message : "Хранилище браузера недоступно."); setStorageBlocked(true); }
+    setHydrated(true);
+    let cancelled = false;
+    fetch("/api/auth", { cache: "no-store" }).then(async (response) => {
+      if (!response.ok) throw new Error("Не удалось проверить доступ. Обновите страницу.");
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Ошибка запроса");
-      setReply(data.reply || "ИИ не вернул текст ответа.");
-      setTableEdits({});
-    } catch (error: unknown) {
-      setError(error instanceof Error ? error.message : "Не удалось получить ответ.");
-    } finally {
-      setLoading(false);
-    }
+      if (!cancelled) setAuth({ authenticated: data.authenticated === true, configured: data.configured === true });
+    }).catch((cause) => { if (!cancelled) { setAuthError(cause instanceof Error ? cause.message : "Не удалось проверить доступ."); setAuth({ configured: false, authenticated: false }); } });
+    return () => { cancelled = true; };
+  }, []);
+  useEffect(() => {
+    if (!hydrated || storageBlocked) return;
+    const timer = setTimeout(() => { try { saveWorkspace(window.localStorage, workspace); setStorageError(""); } catch { setStorageError("Не удалось сохранить проект в этом браузере. Экспортируйте резервную копию перед закрытием."); } }, 250);
+    return () => clearTimeout(timer);
+  }, [workspace, hydrated, storageBlocked]);
+  // Flush the latest edits when the browser navigates away instead of losing the debounce window.
+  useEffect(() => {
+    const flush = () => { if (hydrated && !storageBlocked) { try { saveWorkspace(window.localStorage, workspace); } catch { /* Existing project is retained; status is reported by the normal save path. */ } } };
+    window.addEventListener("pagehide", flush); return () => window.removeEventListener("pagehide", flush);
+  }, [workspace, hydrated, storageBlocked]);
+  const selectedMode = modes.find((item) => item.id === workspace.mode) ?? modes[0];
+  const current = workspace.documents.find((item) => item.id === workspace.activeDocumentId);
+  async function login(event: FormEvent) {
+    event.preventDefault(); if (authLoading) return;
+    setAuthLoading(true); setAuthError("");
+    try { const response = await fetch("/api/auth", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password }) }); const data = await response.json(); if (!response.ok) throw new Error(data.error || "Не удалось войти."); setAuth({ authenticated: data.authenticated === true, configured: data.configured === true }); setPassword(""); }
+    catch (cause) { setAuthError(cause instanceof Error ? cause.message : "Не удалось войти."); }
+    finally { setAuthLoading(false); }
   }
-
-  const selectedMode = modes.find((item) => item.id === mode) ?? modes[0];
-  const hasTable = /\|.+\|[\s\S]*?\n\s*\|?[-:| ]+\|/m.test(reply);
-  function submitEditedEstimate() {
-    const details = Object.values(tableEdits)
-      .map((edit) => "- Позиция: " + edit.item + "; поле: " + edit.field + "; новое значение: " + (edit.value || "пусто"))
-      .join("\n");
-    if (!details || !lastPrompt || !reply) return;
-    const followUp =
-      "Исходный запрос пользователя:\n" + lastPrompt +
-      "\n\nТЕКУЩАЯ СМЕТА, КОТОРУЮ НУЖНО ДОРАБОТАТЬ, А НЕ СОЗДАВАТЬ ЗАНОВО:\n" + reply +
-      "\n\nДАННЫЕ, ВВЕДЁННЫЕ ПОЛЬЗОВАТЕЛЕМ В КАРТОЧКАХ:\n" + details +
-      "\n\nОБЯЗАТЕЛЬНО: верни полную обновлённую смету, а не краткий ответ и не только список изменений. Сохрани все существующие позиции материалов и работ, их порядок, примечания, названия разделов и разделение материалов/работ. Не удаляй и не сокращай примечания. Измени только те поля, которые пользователь передал выше; сохрани остальные исходные значения. Пересчитай сумму каждой позиции как количество × цена за единицу и отдельно подведи итог материалов, итог работ и общий итог. Если количество или цена неизвестны, оставь соответствующую ячейку пустой, сумму по этой позиции не выдумывай и перечисли только действительно недостающие данные в конце. Не добавляй альтернативные варианты, если их не было в исходной смете. Выведи результат Markdown-таблицами с тем же оформлением карточек.";
-    void sendMessage(undefined, followUp);
+  async function logout() {
+    try { const response = await fetch("/api/auth", { method: "DELETE" }); if (!response.ok) throw new Error("Не удалось завершить сессию."); setAuth((value) => value ? { ...value, authenticated: false } : value); setPassword(""); }
+    catch (cause) { setAuthError(cause instanceof Error ? cause.message : "Не удалось выйти."); }
   }
-
-  return (
-    <main className="app-shell">
-      <header className="hero">
-        <div className="brand-mark" aria-hidden="true">СП</div>
-        <div>
-          <p className="eyebrow">СТРОИТЕЛЬНЫЙ ПОМОЩНИК</p>
-          <h1>«СВОИ ЛЮДИ»</h1>
-          <p className="subtitle">Помощник для строительного бизнеса в Иркутске</p>
-        </div>
-      </header>
-
-      <section className="panel">
-        <div className="section-heading">
-          <div>
-            <h2>Выберите направление</h2>
-            <p>Это помогает помощнику точнее учитывать задачу.</p>
-          </div>
-        </div>
-        <div className="mode-grid">
-          {modes.map((item) => (
-            <button
-              className={mode === item.id ? "mode-card selected" : "mode-card"}
-              type="button"
-              key={item.id}
-              onClick={() => setMode(item.id)}
-              aria-pressed={mode === item.id}
-            >
-              <span className="mode-title">{item.label}</span>
-              <span className="mode-description">{item.description}</span>
-            </button>
-          ))}
-        </div>
+  async function sendPayload(payload: ChatPayload) {
+    if (inFlight.current || !auth?.authenticated) return;
+    if (payload.message.length > MAX_MESSAGE_LENGTH || bytes(payload) > MAX_BODY_BYTES) { setError("Запрос слишком велик. Сократите сообщение или сохраните смету отдельно."); return; }
+    inFlight.current = true; setLoading(true); setError(""); setNotice("");
+    setWorkspace((value) => ({ ...value, failedRequest: payload }));
+    try {
+      const response = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      const data = await response.json();
+      if (!response.ok) { if (response.status === 401) setAuth((value) => value ? { ...value, authenticated: false } : value); throw new Error(data.error || "Ошибка запроса."); }
+      if (typeof data.reply !== "string" || !data.reply.trim()) throw new Error("Помощник не вернул ответ. Предыдущие данные сохранены.");
+      const id = createDocumentId(); const document = parseEstimateDocument(data.reply, id);
+      setWorkspace((value) => ({ ...value, draft: value.draft === payload.message ? "" : value.draft, failedRequest: undefined, messages: [...value.messages, { id: createDocumentId(), role: "user" as const, content: payload.message }, { id: createDocumentId(), role: "assistant" as const, content: data.reply, documentId: id }], documents: [...value.documents, { id, createdAt: new Date().toISOString(), mode: payload.mode, prompt: payload.message, document }], activeDocumentId: id }));
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Не удалось получить ответ. Смета и правки сохранены."); }
+    finally { inFlight.current = false; setLoading(false); }
+  }
+  function submit(event: FormEvent) { event.preventDefault(); const message = workspace.draft.trim(); if (message) void sendPayload(buildChatPayload(workspace, message)); }
+  function editCell(tableId: string, rowId: string, index: number, value: string) {
+    setWorkspace((previous) => ({ ...previous, documents: previous.documents.map((version) => version.id === previous.activeDocumentId ? { ...version, document: updateEstimateCell(version.document, tableId, rowId, index, value) } : version) }));
+  }
+  function snapshot() {
+    if (!current) return;
+    const id = createDocumentId();
+    const version = { ...current, id, createdAt: new Date().toISOString(), document: parseEstimateDocument(serializeEstimateDocument(current.document), id) };
+    setWorkspace((value) => ({ ...value, documents: [...value.documents, version], activeDocumentId: id })); setNotice("Версия сохранена в этом браузере.");
+  }
+  function requestRevision() {
+    if (!current) return;
+    const payload = buildChatPayload(workspace, "Проверь текущую отредактированную смету. Сохрани все позиции, варианты, единицы и примечания; не добавляй вымышленные цены. Уточни только недостающие данные и верни полную смету.");
+    const content = serializeEstimateDocument(current.document);
+    if (content.length > MAX_HISTORY_MESSAGE_LENGTH) { setError("Смета слишком велика для одного запроса. Экспортируйте её и разбейте проверку по разделам."); return; }
+    void sendPayload(payload);
+  }
+  async function importWorkspace(event: ChangeEvent<HTMLInputElement>) {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    if (!file) return;
+    try {
+      if (file.size > MAX_WORKSPACE_BYTES) throw new Error("Файл проекта слишком велик. Максимум — 5 МБ.");
+      const imported = decodeWorkspace(await file.text());
+      if (!window.confirm("Заменить локальный проект данными из файла? Текущий проект можно предварительно экспортировать.")) return;
+      // Validate and successfully save the replacement before changing the visible workspace.
+      saveWorkspace(window.localStorage, imported);
+      setWorkspace(imported); setStorageBlocked(false); setStorageError(""); setError(""); setNotice("Проект восстановлен из файла в этом браузере.");
+    } catch (cause) { setStorageError(cause instanceof Error ? cause.message : "Не удалось прочитать файл. Текущий проект сохранён."); }
+    finally { input.value = ""; }
+  }
+  function clearWorkspace() {
+    if (!window.confirm("Удалить диалог и все версии из этого браузера? Сначала можно экспортировать резервную копию.")) return;
+    try { window.localStorage.removeItem(WORKSPACE_STORAGE_KEY); setStorageBlocked(false); setWorkspace(emptyWorkspace()); setStorageError(""); setError(""); setNotice("Локальные данные удалены."); } catch { setStorageError("Браузер не разрешил удалить данные."); }
+  }
+  async function copyAnswer() {
+    if (!current) return;
+    try { await navigator.clipboard.writeText(serializeEstimateDocument(current.document)); setNotice("Скопирована текущая версия с вашими правками и пересчитанными суммами."); }
+    catch { setNotice("Копирование недоступно в этом браузере. Используйте «Скачать смету»."); }
+  }
+  return <main className="app-shell">
+    <header className="hero"><div className="brand-mark" aria-hidden="true">СП</div><div><p className="eyebrow">СТРОИТЕЛЬНЫЙ ПОМОЩНИК</p><h1>«СВОИ ЛЮДИ»</h1><p className="subtitle">Помощник для строительного бизнеса в Иркутске</p></div></header>
+    {!auth && <p className="status" role="status">Проверяю доступ…</p>}
+    {auth && !auth.authenticated && <section className="panel auth-panel"><h2>Вход владельца</h2>{auth.configured ? <form onSubmit={login}><label className="field-label" htmlFor="access-password">Пароль помощника</label><input id="access-password" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required maxLength={256} /><button className="primary-button" disabled={authLoading || !password} type="submit">{authLoading ? "Проверяю…" : "Войти"}</button></form> : <p>Сервис ещё не настроен. Обратитесь к администратору.</p>}{authError && <p className="error-box" role="alert">{authError}</p>}</section>}
+    {auth?.authenticated && <>
+      <section className="panel"><div className="section-heading"><div><h2>Выберите направление</h2><p>Это помогает помощнику точнее учитывать задачу.</p></div><button type="button" className="secondary-button" onClick={logout} disabled={loading}>Выйти</button></div><div className="mode-grid">{modes.map((item) => <button className={workspace.mode === item.id ? "mode-card selected" : "mode-card"} type="button" key={item.id} onClick={() => setWorkspace((value) => ({ ...value, mode: item.id }))} aria-pressed={workspace.mode === item.id}><span className="mode-title">{item.label}</span><span className="mode-description">{item.description}</span></button>)}</div></section>
+      <section className="panel chat-panel"><div className="section-heading"><div><p className="eyebrow">ТЕКУЩИЙ РЕЖИМ</p><h2>{selectedMode.label}</h2><p>{selectedMode.description}</p></div></div>
+        {(workspace.mode === "estimate" || workspace.mode === "facade") && <div className="variant-select"><label className="field-label" htmlFor="facade-options">Варианты фасада</label><select id="facade-options" value={workspace.facadeOptions} onChange={(event) => setWorkspace((value) => ({ ...value, facadeOptions: event.target.value as FacadeOptions }))}><option value="auto">Определить по запросу</option><option value="without">Без утепления</option><option value="with">С утеплением</option><option value="both">Сравнить оба варианта</option></select></div>}
+        <form onSubmit={submit}><label className="field-label" htmlFor="message">Опишите задачу</label><textarea id="message" value={workspace.draft} onChange={(event) => setWorkspace((value) => ({ ...value, draft: event.target.value }))} placeholder={selectedMode.prompt} rows={5} maxLength={MAX_MESSAGE_LENGTH} /><div className="form-footer"><span className="hint">{workspace.draft.length}/{MAX_MESSAGE_LENGTH} символов. Предыдущие вопросы учитываются.</span><button className="primary-button" type="submit" disabled={loading || !workspace.draft.trim() || !hydrated}>{loading ? "Готовлю ответ…" : "Отправить вопрос"}</button></div></form>
+        {loading && <div className="status" role="status">Анализирую задачу. Предыдущая смета и правки остаются доступными.</div>}
+        {error && <div className="error-box" role="alert"><strong>Не удалось получить ответ</strong><p>{error}</p>{workspace.failedRequest && <button className="secondary-button" type="button" disabled={loading} onClick={() => void sendPayload(workspace.failedRequest!)}>Повторить тот же запрос</button>}</div>}
+        {!error && !loading && workspace.failedRequest && <div className="status"><p>Предыдущий запрос не завершён. Смета и внесённые правки сохранены.</p><button className="secondary-button" type="button" onClick={() => void sendPayload(workspace.failedRequest!)}>Повторить тот же запрос</button></div>}
+        {notice && <p className="status" role="status">{notice}</p>}
+        {current && <article className="answer"><div className="answer-heading"><span className="answer-dot" /><h3>Ответ помощника</h3></div><label className="field-label version-label" htmlFor="document-version">Сохранённая версия</label><select id="document-version" value={current.id} onChange={(event) => setWorkspace((value) => ({ ...value, activeDocumentId: event.target.value }))}>{workspace.documents.map((version, index) => <option key={version.id} value={version.id}>Версия {index + 1} · {new Date(version.createdAt).toLocaleString("ru-RU")} · {version.prompt.slice(0, 48)}</option>)}</select><DocumentEditor document={current.document} onEdit={editCell} />
+          {current.document.blocks.some((block) => block.type === "table") && <div className="estimate-edit-actions"><p>Меняйте поля таблицы или карточек. Единицы измерения сохраняются; суммы рассчитываются автоматически. Неизвестная цена требует уточнения.</p><button className="primary-button" type="button" disabled={loading} onClick={requestRevision}>Проверить текущую смету с помощником</button></div>}
+          <div className="action-row"><button className="secondary-button" type="button" onClick={copyAnswer}>Копировать ответ</button><button className="secondary-button" type="button" onClick={() => download(serializeEstimateDocument(current.document), "smeta.md", "text/markdown;charset=utf-8")}>Скачать смету</button><button className="secondary-button" type="button" onClick={snapshot}>Сохранить отдельную версию</button></div></article>}
+        {workspace.messages.length > 0 && <details className="conversation-history"><summary>История диалога ({workspace.messages.length})</summary>{workspace.messages.map((item) => <div className="history-message" key={item.id}><strong>{item.role === "user" ? "Вы" : "Помощник"}</strong><p>{item.content}</p>{item.documentId && workspace.documents.some((version) => version.id === item.documentId) && <button className="secondary-button" type="button" onClick={() => setWorkspace((value) => ({ ...value, activeDocumentId: item.documentId! }))}>Открыть сохранённый ответ</button>}</div>)}</details>}
       </section>
-
-      <section className="panel chat-panel">
-        <div className="section-heading">
-          <div>
-            <p className="eyebrow">ТЕКУЩИЙ РЕЖИМ</p>
-            <h2>{selectedMode.label}</h2>
-            <p>{selectedMode.description}</p>
-          </div>
-        </div>
-
-        <form onSubmit={sendMessage}>
-          <label className="field-label" htmlFor="message">Опишите задачу</label>
-          <textarea
-            id="message"
-            value={message}
-            onChange={(event) => setMessage(event.target.value)}
-            placeholder={selectedMode.prompt}
-            rows={5}
-            maxLength={10000}
-          />
-          <div className="form-footer">
-            <span className="hint">{message.length}/10000 символов</span>
-            <button className="primary-button" type="submit" disabled={loading || !message.trim()}>
-              {loading ? "Готовлю ответ…" : "Отправить вопрос"}
-            </button>
-          </div>
-        </form>
-
-        {loading && <div className="status" role="status">Анализирую задачу и готовлю ответ…</div>}
-        {error && (
-          <div className="error-box" role="alert">
-            <strong>Не удалось получить ответ</strong>
-            <p>{error}</p>
-            <button className="secondary-button" type="button" onClick={() => void sendMessage()}>Повторить запрос</button>
-          </div>
-        )}
-        {reply && (
-          <article className="answer" aria-live="polite">
-            <div className="answer-heading">
-              <span className="answer-dot" />
-              <h3>Ответ помощника</h3>
-            </div>
-            <div className="markdown-content">
-              <EstimateEditContext.Provider value={{ editedValues, onEdit: (key, edit) => setTableEdits((prev) => ({ ...prev, [key]: edit })) }}><ReactMarkdown remarkPlugins={[remarkGfm]} components={{ table: MarkdownTable }}>{reply}</ReactMarkdown></EstimateEditContext.Provider>
-            </div>
-            {hasTable && <div className="estimate-edit-actions"><p>Измени значения прямо в карточках, затем отправь их ассистенту на пересчёт.</p><button className="primary-button" type="button" disabled={loading || Object.keys(tableEdits).length === 0} onClick={submitEditedEstimate}>{loading ? "Пересчитываю…" : "Отправить данные ассистенту"}</button></div>}
-            <button className="secondary-button" type="button" onClick={() => navigator.clipboard?.writeText(reply)}>Копировать ответ</button>
-          </article>
-        )}
-      </section>
-
-      <footer className="footer">
-        Проверяйте исходные данные, цены и технические требования перед выполнением работ.
-        Расчёты несущих конструкций требуют проверки специалистом.
-      </footer>
-    </main>
-  );
+    </>}
+    <section className="panel storage-panel"><h2>Сохранение проекта</h2><p>Диалог, версии и правки сохраняются только в этом браузере на этом устройстве. На общем компьютере после работы экспортируйте нужное и очистите данные.</p>{storageError && <p className="error-box" role="alert">{storageError}</p>}<div className="action-row"><button type="button" className="secondary-button" disabled={!hydrated} onClick={() => { try { const content = storageBlocked ? window.localStorage.getItem(WORKSPACE_STORAGE_KEY) ?? JSON.stringify(workspace) : JSON.stringify(workspace); download(content, "builder-workspace.json", "application/json"); } catch { setStorageError("Не удалось экспортировать данные браузера."); } }}>Экспортировать проект</button><label className="secondary-button import-button">Восстановить из файла<input aria-label="Восстановить проект из файла" type="file" accept="application/json,.json" disabled={loading || !hydrated} onChange={importWorkspace} /></label><button type="button" className="secondary-button" disabled={loading || !hydrated} onClick={clearWorkspace}>Очистить локальные данные</button></div></section>
+    <footer className="footer">Проверяйте исходные данные, цены и технические требования перед выполнением работ. Расчёты несущих конструкций требуют проверки специалистом.</footer>
+  </main>;
 }
