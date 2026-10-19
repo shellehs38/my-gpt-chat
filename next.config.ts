@@ -7,6 +7,7 @@ const config: NextConfig = {
   outputFileTracingIncludes: {
     "/api/chat": ["./data/codebase-memory.json"],
     "/api/mcp": ["./data/codebase-memory.json"],
+    "/api/project-memory": ["./data/codebase-memory.json"],
   },
   async headers() {
     return [{

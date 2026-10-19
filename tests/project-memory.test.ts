@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { handleMemoryMcp } from "../lib/server/memory-mcp";
-import { memoryStatus, projectMemoryContext, searchCodeMemory, type ProjectMemory } from "../lib/server/project-memory";
+import { memoryStatus, projectMemoryContext, publicProjectMemory, searchCodeMemory, type ProjectMemory } from "../lib/server/project-memory";
 
 export const fixture: ProjectMemory = {
   schemaVersion: 1, source: "Codebase Memory MCP", upstreamVersion: "0.12.1", project: "svoi-lyudi-builder", repository: "shellehs38/my-gpt-chat",
@@ -22,6 +22,14 @@ test("chat context carries the same public decisions and fingerprint as MCP", ()
   assert.equal(searchCodeMemory(fixture, "unmatched").length, 0);
   assert.equal(searchCodeMemory(fixture, "runLedgerCommand")[0].file, "lib/server/ledger.ts");
   assert.equal(searchCodeMemory(fixture, "lib", 100).length, 2);
+});
+
+test("public web fallback exposes the same bounded decisions as MCP", () => {
+  const payload = publicProjectMemory(fixture);
+  assert.deepEqual(payload.status, memoryStatus(fixture));
+  assert.deepEqual(payload.sections, fixture.sections);
+  assert.equal("symbols" in payload, false);
+  assert.match(JSON.stringify(payload), /COMPANY DOCUMENT BRANDING/);
 });
 
 test("standard MCP client discovers and calls every published memory tool", async () => {

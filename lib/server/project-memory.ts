@@ -21,6 +21,10 @@ export function memoryStatus(memory: ProjectMemory) {
   return { source, upstreamVersion, project, repository, revision, fingerprint, generatedAt, access, symbolCount: memory.symbols.length, limitations };
 }
 
+export function publicProjectMemory(memory: ProjectMemory) {
+  return { status: memoryStatus(memory), sections: memory.sections };
+}
+
 export function searchCodeMemory(memory: ProjectMemory, query: string, limit = 10): MemorySymbol[] {
   const terms = query.toLowerCase().match(/[\p{L}\p{N}_/-]{2,}/gu)?.slice(0, 20) ?? [];
   if (!terms.length) return [];
