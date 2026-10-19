@@ -1,0 +1,55 @@
+{
+  "version": "1.3.0",
+  "baseCommit": "a32c93c7c47f228535f242a517094d53447e83a6",
+  "checkedAtUTC": "2026-10-19T00:17:25.437771+00:00",
+  "typecheck": "passed",
+  "productionBuild": "passed",
+  "unitTests": 54,
+  "unitTestsPassed": 54,
+  "productionDependencyVulnerabilities": 0,
+  "browser": {
+    "fixturesOnly": true,
+    "passed": true,
+    "widths": [
+      390,
+      1440
+    ],
+    "ambiguousClientAndObjectChoice": true,
+    "exactRetryAfterLostResponse": true,
+    "newDraftPreserved": true,
+    "reloadManualRecovery": true,
+    "doubleClickSingleRequest": true,
+    "malformedSuccessRejected": true,
+    "horizontalOverflow": false,
+    "pageErrors": []
+  },
+  "sheetsMechanism": {
+    "temporaryTabsOnly": true,
+    "assertionsPassed": 24,
+    "atomicRollback": true,
+    "concurrentObjectInserts": true,
+    "sameOperationOneExpense": true,
+    "nativeTableFirstAppendRow": 2,
+    "staleMarkerCleanupPreservesReusedMarker": true,
+    "temporaryResourcesRemoved": true
+  },
+  "localProductionSmoke": {
+    "passed": true,
+    "productionBoot": true,
+    "ownerLogin": true,
+    "secureHttpOnlySession": true,
+    "anonymousLedgerDenied": true,
+    "missingGoogleConfigurationHonest": true,
+    "missingGoogleWriteDenied": true,
+    "crossOriginWriteDenied": true,
+    "missingModelKeyDenied": true,
+    "realModelCalls": 0,
+    "realGoogleCalls": 0
+  },
+  "websiteGoogleEndToEnd": {
+    "verified": false,
+    "reason": "GOOGLE_SERVICE_ACCOUNT_JSON not configured in Production. Requires owner to provision the service account and share selected spreadsheet."
+  },
+  "realModelCallsForThisRelease": 0,
+  "deployment": "Verify separately after GitHub publication."
+}
