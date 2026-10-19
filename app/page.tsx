@@ -10,6 +10,7 @@ import { buildChatPayload, decodeWorkspace, emptyWorkspace, loadWorkspace, saveW
 import type { ChatPayload, FacadeOptions, Mode, Workspace } from "@/lib/workspace-storage";
 import { MAX_MESSAGE_LENGTH, MAX_HISTORY_MESSAGE_LENGTH, MAX_BODY_BYTES } from "@/lib/chat-contract";
 import BusinessLedger from "@/components/BusinessLedger";
+import { brandedDocumentHtml, brandedMarkdown, COMPANY_LOGO_URL, loadCompanyLogo } from "@/lib/document-branding";
 
 const modes: { id: Mode; label: string; description: string; prompt: string }[] = [
   { id: "general", label: "Общий помощник", description: "Дом, стройка и организация работ", prompt: "Опиши задачу, объект или вопрос по строительству." },
@@ -60,9 +61,12 @@ export default function Home() {
   const [authLoading, setAuthLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [ledgerBusy, setLedgerBusy] = useState(false);
+  const [exportBusy, setExportBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const inFlight = useRef(false);
+  const exportInFlight = useRef(false);
+  const documentContent = useRef<HTMLDivElement>(null);
   useEffect(() => {
     try { setWorkspace(loadWorkspace(window.localStorage)); }
     catch (cause) { setStorageError(cause instanceof Error ? cause.message : "Хранилище браузера недоступно."); setStorageBlocked(true); }
@@ -150,11 +154,27 @@ export default function Home() {
   }
   async function copyAnswer() {
     if (!current) return;
-    try { await navigator.clipboard.writeText(serializeEstimateDocument(current.document)); setNotice("Скопирована текущая версия с вашими правками и пересчитанными суммами."); }
+    try { await navigator.clipboard.writeText(brandedMarkdown(serializeEstimateDocument(current.document), window.location.origin)); setNotice("Скопирована текущая версия с вашими правками, пересчитанными суммами и ссылкой на логотип. Для файла со встроенным изображением используйте «Скачать документ с логотипом»."); }
     catch { setNotice("Копирование недоступно в этом браузере. Используйте «Скачать смету»."); }
   }
+  async function downloadBrandedDocument() {
+    if (!current || !documentContent.current || exportInFlight.current) return;
+    exportInFlight.current = true; setExportBusy(true); setNotice("");
+    const source = documentContent.current;
+    const snapshot = source.cloneNode(true) as HTMLDivElement;
+    const inputs = source.querySelectorAll("textarea");
+    snapshot.querySelectorAll("textarea").forEach((input, index) => { input.value = inputs[index].value; });
+    const title = modes.find((item) => item.id === current.mode)?.label ?? "Документ";
+    const versionDate = new Date(current.createdAt).toLocaleString("ru-RU", { timeZone: "Asia/Irkutsk" });
+    try {
+      const logo = await loadCompanyLogo();
+      download(brandedDocumentHtml(snapshot, logo, title, versionDate), "svoi-lyudi-document.html", "text/html;charset=utf-8");
+      setNotice("Документ со встроенным логотипом скачан в HTML. Откройте файл в браузере; через меню печати его можно сохранить в PDF.");
+    } catch (cause) { setNotice(cause instanceof Error ? cause.message : "Не удалось подготовить документ с логотипом. Повторите выгрузку."); }
+    finally { exportInFlight.current = false; setExportBusy(false); }
+  }
   return <main className="app-shell">
-    <header className="hero"><div className="brand-mark" aria-hidden="true">СП</div><div><p className="eyebrow">СТРОИТЕЛЬНЫЙ ПОМОЩНИК</p><h1>«СВОИ ЛЮДИ»</h1><p className="subtitle">Помощник для строительного бизнеса в Иркутске</p></div></header>
+    <header className="hero"><img className="company-logo" src={COMPANY_LOGO_URL} width={1672} height={941} alt="Логотип СВОИ ЛЮДИ" /><div><p className="eyebrow">СТРОИТЕЛЬНЫЙ ПОМОЩНИК</p><h1>«СВОИ ЛЮДИ»</h1><p className="subtitle">Помощник для строительного бизнеса в Иркутске</p></div></header>
     {!auth && <p className="status" role="status">Проверяю доступ…</p>}
     {auth && !auth.authenticated && <section className="panel auth-panel"><h2>Вход владельца</h2>{auth.configured ? <form onSubmit={login}><label className="field-label" htmlFor="access-password">Пароль помощника</label><input id="access-password" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required maxLength={256} /><button className="primary-button" disabled={authLoading || !password} type="submit">{authLoading ? "Проверяю…" : "Войти"}</button></form> : <p>Сервис ещё не настроен. Обратитесь к администратору.</p>}{authError && <p className="error-box" role="alert">{authError}</p>}</section>}
     {auth?.authenticated && <>
@@ -167,9 +187,9 @@ export default function Home() {
         {error && <div className="error-box" role="alert"><strong>Не удалось получить ответ</strong><p>{error}</p>{workspace.failedRequest && <button className="secondary-button" type="button" disabled={loading} onClick={() => void sendPayload(workspace.failedRequest!)}>Повторить тот же запрос</button>}</div>}
         {!error && !loading && workspace.failedRequest && <div className="status"><p>Предыдущий запрос не завершён. Смета и внесённые правки сохранены.</p><button className="secondary-button" type="button" onClick={() => void sendPayload(workspace.failedRequest!)}>Повторить тот же запрос</button></div>}
         {notice && <p className="status" role="status">{notice}</p>}
-        {current && <article className="answer"><div className="answer-heading"><span className="answer-dot" /><h3>Ответ помощника</h3></div><label className="field-label version-label" htmlFor="document-version">Сохранённая версия</label><select id="document-version" value={current.id} onChange={(event) => setWorkspace((value) => ({ ...value, activeDocumentId: event.target.value }))}>{workspace.documents.map((version, index) => <option key={version.id} value={version.id}>Версия {index + 1} · {new Date(version.createdAt).toLocaleString("ru-RU")} · {version.prompt.slice(0, 48)}</option>)}</select><DocumentEditor document={current.document} onEdit={editCell} />
+        {current && <article className="answer"><img className="document-logo" src={COMPANY_LOGO_URL} width={1672} height={941} alt="Логотип СВОИ ЛЮДИ на документе" /><div className="answer-heading"><span className="answer-dot" /><h3>Ответ помощника</h3></div><label className="field-label version-label" htmlFor="document-version">Сохранённая версия</label><select id="document-version" value={current.id} onChange={(event) => setWorkspace((value) => ({ ...value, activeDocumentId: event.target.value }))}>{workspace.documents.map((version, index) => <option key={version.id} value={version.id}>Версия {index + 1} · {new Date(version.createdAt).toLocaleString("ru-RU")} · {version.prompt.slice(0, 48)}</option>)}</select><div ref={documentContent}><DocumentEditor document={current.document} onEdit={editCell} /></div>
           {current.document.blocks.some((block) => block.type === "table") && <div className="estimate-edit-actions"><p>Меняйте поля таблицы или карточек. Единицы измерения сохраняются; суммы рассчитываются автоматически. Неизвестная цена требует уточнения.</p><button className="primary-button" type="button" disabled={loading} onClick={requestRevision}>Проверить текущую смету с помощником</button></div>}
-          <div className="action-row"><button className="secondary-button" type="button" onClick={copyAnswer}>Копировать ответ</button><button className="secondary-button" type="button" onClick={() => download(serializeEstimateDocument(current.document), "smeta.md", "text/markdown;charset=utf-8")}>Скачать смету</button><button className="secondary-button" type="button" onClick={snapshot}>Сохранить отдельную версию</button></div></article>}
+          <div className="action-row"><button className="secondary-button" type="button" disabled={exportBusy} onClick={() => void downloadBrandedDocument()}>{exportBusy ? "Готовлю файл с логотипом…" : "Скачать документ с логотипом"}</button><button className="secondary-button" type="button" onClick={copyAnswer}>Копировать ответ</button><button className="secondary-button" type="button" onClick={() => download(brandedMarkdown(serializeEstimateDocument(current.document), window.location.origin), "smeta.md", "text/markdown;charset=utf-8")}>Скачать смету</button><button className="secondary-button" type="button" onClick={snapshot}>Сохранить отдельную версию</button></div></article>}
         {workspace.messages.length > 0 && <details className="conversation-history"><summary>История диалога ({workspace.messages.length})</summary>{workspace.messages.map((item) => <div className="history-message" key={item.id}><strong>{item.role === "user" ? "Вы" : "Помощник"}</strong><p>{item.content}</p>{item.documentId && workspace.documents.some((version) => version.id === item.documentId) && <button className="secondary-button" type="button" onClick={() => setWorkspace((value) => ({ ...value, activeDocumentId: item.documentId! }))}>Открыть сохранённый ответ</button>}</div>)}</details>}
       </section>
     </>}
