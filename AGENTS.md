@@ -9,3 +9,7 @@
 Для навигации по коду используй Codebase Memory, когда MCP подключён. Настройка и CLI: [docs/CODEBASE_MEMORY.md](docs/CODEBASE_MEMORY.md). Перед работой читай [docs/CODEBASE_MEMORY_ADR.md](docs/CODEBASE_MEMORY_ADR.md); актуальные правила владельца и исходники имеют приоритет над индексом.
 
 После изменения кода обновляй индекс командой `npm run memory:index`. Проверяй `index_status`, `get_graph_schema` и `check_index_coverage` для затронутых файлов; подтверждай найденные связи чтением исходника и тестами. Если MCP в текущем клиенте недоступен, используй описанный CLI или обычное чтение кода и укажи ограничение. Не выдавай наличие конфигурации за активное подключение к текущему чату. Бинарники, локальные базы, ключи и пользовательские данные в коммит не добавляй.
+
+## Supabase и учёт
+
+При задачах о клиентах, объектах, расходах, сметах и переносе базы обязательно читай [docs/SUPABASE_BUSINESS_ASSISTANT.md](docs/SUPABASE_BUSINESS_ASSISTANT.md) и SQL-схему `supabase/migrations/20261019_initial_private_business_schema.sql`. Сохраняй текущий Google Sheets учёт, пока адаптер Supabase не проверен. Не утверждай, что сайт уже записывает в Supabase, до реального сквозного теста.
