@@ -1,0 +1,15 @@
+# Generated files, local tools/indexes, and server credentials are not code context.
+.local/
+.codebase-memory/
+.next/
+node_modules/
+.vercel/
+.codex/
+.mcp.json
+.env
+.env.*
+*.pem
+*.key
+*.log
+playwright-report/
+test-results/

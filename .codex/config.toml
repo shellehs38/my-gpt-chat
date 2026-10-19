@@ -1,0 +1,6 @@
+# Project-local MCP configuration. Launch Codex from the trusted checkout root.
+[mcp_servers.codebase_memory]
+command = "node"
+args = ["scripts/codebase-memory.mjs", "serve"]
+startup_timeout_sec = 30
+tool_timeout_sec = 120

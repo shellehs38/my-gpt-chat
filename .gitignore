@@ -11,3 +11,5 @@ build/
 *.tsbuildinfo
 playwright-report/
 test-results/
+.local/
+.codebase-memory/

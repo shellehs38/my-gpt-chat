@@ -7,7 +7,11 @@
     "build": "next build",
     "start": "next start",
     "test": "tsx --test --test-concurrency=1 tests/*.test.ts",
-    "typecheck": "next typegen && tsc --noEmit"
+    "typecheck": "next typegen && tsc --noEmit",
+    "memory:install": "node scripts/codebase-memory.mjs install",
+    "memory:index": "node scripts/codebase-memory.mjs index",
+    "memory:check": "node scripts/check-codebase-memory.mjs",
+    "memory:serve": "node scripts/codebase-memory.mjs serve"
   },
   "dependencies": {
     "next": "15.5.28",

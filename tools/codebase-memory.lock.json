@@ -1,0 +1,27 @@
+{
+  "version": "0.12.1",
+  "repository": "DeusData/codebase-memory-mcp",
+  "releaseUrl": "https://github.com/DeusData/codebase-memory-mcp/releases/tag/v0.12.1",
+  "assets": {
+    "linux-x64": {
+      "archive": "codebase-memory-mcp-linux-amd64-portable.tar.gz",
+      "sha256": "8c3d0341064301e78ecc84cf7348d4e2c6562a0f57448243ea560aaa34de36c1",
+      "binarySha256": "77745491f0a9c346d6da23eed4d92b5feaa31a27a883c9faa4fa9f47c8183705"
+    },
+    "linux-arm64": {
+      "archive": "codebase-memory-mcp-linux-arm64-portable.tar.gz",
+      "sha256": "ed0f1f548cd79b121c401c2e9f7841c189a001af26d3768368088c24f6a53533",
+      "binarySha256": "6a64e20e2ca8dc15b4a412e981e5aea60804ed3e952d693ab491c93ccd36ed45"
+    },
+    "darwin-x64": {
+      "archive": "codebase-memory-mcp-darwin-amd64.tar.gz",
+      "sha256": "ca6e64397a8ae80cec898a8205a6aa16750ac798acc05a0c3ed983837944a581",
+      "binarySha256": "f3ba4d7dd462be868eff85f0dccb7375405f58084da800826065df2312b028ab"
+    },
+    "darwin-arm64": {
+      "archive": "codebase-memory-mcp-darwin-arm64.tar.gz",
+      "sha256": "9bfcbe38414b47969a3e1d1c1999f5357409387c86fa3d24221b5458267660d2",
+      "binarySha256": "a36cfa1f5d10d8c4762501d63feef082711aae4704b9e8f9066db52779a8601e"
+    }
+  }
+}
