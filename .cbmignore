@@ -13,3 +13,4 @@ node_modules/
 *.log
 playwright-report/
 test-results/
+data/codebase-memory.json

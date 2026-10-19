@@ -13,3 +13,4 @@ playwright-report/
 test-results/
 .local/
 .codebase-memory/
+data/codebase-memory.json

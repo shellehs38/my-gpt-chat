@@ -11,21 +11,27 @@
     "memory:install": "node scripts/codebase-memory.mjs install",
     "memory:index": "node scripts/codebase-memory.mjs index",
     "memory:check": "node scripts/check-codebase-memory.mjs",
-    "memory:serve": "node scripts/codebase-memory.mjs serve"
+    "memory:serve": "node scripts/codebase-memory.mjs serve",
+    "memory:export": "node scripts/export-codebase-memory.mjs",
+    "prebuild": "npm run memory:export",
+    "pretest": "npm run memory:export",
+    "predev": "npm run memory:export"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.1",
     "next": "15.5.28",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-markdown": "^9.1.0",
-    "remark-gfm": "^4.0.1"
+    "remark-gfm": "^4.0.1",
+    "zod": "3.25.76"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "typescript": "^5.9.0",
-    "tsx": "^4.20.0"
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0"
   },
   "engines": {
     "node": ">=22"

@@ -5,6 +5,7 @@ import { getAccessConfig, readSession } from "@/lib/server/auth";
 import { buildInstructions, ensureScaffoldRows, extractCompletedOutput, hasBrokenEstimateMarkdown, hasRequiredEstimateSections, isEstimateRequest, isFacadeRequest, requestedFacadeOptions, requiresFullEstimate, validateChatRequest } from "@/lib/server/chat";
 import { BodyError, errorResponse, isSameOriginWrite, readJsonBody } from "@/lib/server/http";
 import { acquireChatSlot, takeRateLimit } from "@/lib/server/rate-limit";
+import { loadProjectMemory, memoryStatus, projectMemoryContext } from "@/lib/server/project-memory";
 
 export const runtime = "nodejs";
 const OPENAI_TIMEOUT_MS = 30_000;
@@ -30,12 +31,13 @@ export async function POST(request: Request) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), OPENAI_TIMEOUT_MS);
   try {
+    const memory = loadProjectMemory();
     const response = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
       body: JSON.stringify({
         model: process.env.OPENAI_MODEL?.trim() || "gpt-4.1-mini",
-        instructions: buildInstructions(body),
+        instructions: buildInstructions(body) + "\n\n" + projectMemoryContext(memory, body.message),
         input: [...(body.history ?? []), { role: "user", content: body.message }],
         max_output_tokens: 8000,
         store: false,
@@ -56,7 +58,7 @@ export async function POST(request: Request) {
     const document = parseEstimateDocument(withScaffold);
     // Browser and API share precisely the same calculation/serialization path.
     const reply = document.blocks.some((block) => block.type === "table") ? serializeEstimateDocument(document) : withScaffold;
-    return NextResponse.json({ reply }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({ reply, memory: memoryStatus(memory) }, { headers: { "Cache-Control": "no-store" } });
   } catch {
     return errorResponse(controller.signal.aborted ? "Сервис ИИ отвечает слишком долго. Попробуйте ещё раз." : "Не удалось связаться с сервисом ИИ. Попробуйте позже.", controller.signal.aborted ? 504 : 502);
   } finally {

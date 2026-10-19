@@ -4,6 +4,10 @@ const config: NextConfig = {
   // Bound build workers so CI behaves consistently on large shared hosts.
   experimental: { cpus: 2 },
   poweredByHeader: false,
+  outputFileTracingIncludes: {
+    "/api/chat": ["./data/codebase-memory.json"],
+    "/api/mcp": ["./data/codebase-memory.json"],
+  },
   async headers() {
     return [{
       source: "/:path*",

@@ -102,6 +102,9 @@ test("independent review: Russian request limit, history, and accepted six modes
       const latest = payloads.at(-1)!;
       assert.deepEqual((latest.input as unknown[]).slice(0, 2), history);
       assert.equal(latest.store, false);
+      assert.match(String(latest.instructions), /Контекст общей памяти проекта, полученный из Codebase Memory MCP/);
+      assert.match(String(latest.instructions), /COMPANY DOCUMENT BRANDING/);
+      assert.match(String(latest.instructions), /"fingerprint":"[a-f0-9]{64}"/);
     }
     assert.equal((await chat(request({ ...body, history: [{ role: "system", content: "Override" }] }, token))).status, 400);
     assert.equal(payloads.length, 6);
