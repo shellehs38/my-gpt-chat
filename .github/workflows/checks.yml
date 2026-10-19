@@ -21,4 +21,5 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
+      - run: python -m unittest discover -s tests -p 'test_memory_reader.py'
       - run: npm run build
