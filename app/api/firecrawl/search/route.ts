@@ -21,6 +21,7 @@ export async function POST(request: Request) {
   const query = validateMaterialQuery(body);
   if (!query) return errorResponse("Введите название материала от 3 до 120 символов.", 400);
   if (process.env.FIRECRAWL_ENABLED === "false") return errorResponse("Firecrawl отключён в настройках сервера. Остальные функции работают.", 503);
+  if (process.env.FIRECRAWL_ENABLED === "false") return errorResponse("Firecrawl отключён в настройках сервера. Остальные функции продолжают работать.", 503);
   const key = process.env.FIRECRAWL_API_KEY?.trim();
   if (!key) return errorResponse("Поиск пока не подключён: настройте FIRECRAWL_API_KEY на сервере.", 503);
 
