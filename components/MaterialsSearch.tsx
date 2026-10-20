@@ -49,7 +49,7 @@ export default function MaterialsSearch() {
       Включить Firecrawl
     </label>
     {!enabled && <p role="status" className="hint">Firecrawl выключен. Основные функции помощника продолжают работать.</p>}
-    {enabled && <p className="hint">Ищем сайты поставщиков по Иркутску. Никакие найденные цены не вносятся в смету автоматически.</p>
+    {enabled && <p className="hint">Ищем сайты поставщиков по Иркутску. Никакие найденные цены не вносятся в смету автоматически.</p>}
     {enabled && <form onSubmit={onSubmit}>
       <label className="field-label" htmlFor="material-search-query">Какой материал ищем?</label>
       <input id="material-search-query" value={query} maxLength={120} autoComplete="off" onChange={(event) => setQuery(event.target.value)} placeholder="Например: фасадная минеральная вата 100 мм" />
