@@ -14,6 +14,7 @@ export default function MaterialsSearch() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [enabled, setEnabled] = useState(true);
+  const [enabled, setEnabled] = useState(true);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -43,14 +44,19 @@ export default function MaterialsSearch() {
     </label>
     {!enabled && <p className="hint" role="status">Firecrawl выключен. Сметы, клиенты и расходы продолжают работать.</p>}
     {enabled && <>
-    <p className="hint">Ищем сайты поставщиков по Иркутску. Никакие найденные цены не вносятся в смету автоматически.</p>
-    <form onSubmit={onSubmit}>
+    <label style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 8, margin: "10px 0" }}>
+      <input type="checkbox" checked={enabled} disabled={busy} onChange={(event) => { setEnabled(event.target.checked); if (!event.target.checked) { setItems([]); setCheckedAt(""); setNotice(""); setError(""); } }} style={{ width: 18, minHeight: 18 }} />
+      Включить Firecrawl
+    </label>
+    {!enabled && <p role="status" className="hint">Firecrawl выключен. Основные функции помощника продолжают работать.</p>}
+    {enabled && <p className="hint">Ищем сайты поставщиков по Иркутску. Никакие найденные цены не вносятся в смету автоматически.</p>
+    {enabled && <form onSubmit={onSubmit}>
       <label className="field-label" htmlFor="material-search-query">Какой материал ищем?</label>
       <input id="material-search-query" value={query} maxLength={120} autoComplete="off" onChange={(event) => setQuery(event.target.value)} placeholder="Например: фасадная минеральная вата 100 мм" />
       <button className="primary-button" style={{ marginTop: 12 }} type="submit" disabled={busy || query.trim().length < 3}>
         {busy ? "Ищу поставщиков…" : "Найти цены и поставщиков"}
       </button>
-    </form>
+    </form>}
     {error && <p className="error-box" role="alert">{error}</p>}
     {checkedAt && <div aria-live="polite" style={{ marginTop: 16, textAlign: "left" }}>
       <p className="hint">Дата поиска: {new Date(checkedAt).toLocaleString("ru-RU", { timeZone: "Asia/Irkutsk" })} (Иркутск).</p>
