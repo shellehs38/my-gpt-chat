@@ -7,11 +7,12 @@ import { parseFirecrawlResults, validateMaterialQuery } from "../lib/server/fire
 
 const origin = "http://localhost:3000";
 function setup() {
-  const keys = ["ASSISTANT_ACCESS_PASSWORD", "ASSISTANT_SESSION_SECRET", "FIRECRAWL_API_KEY"] as const;
+  const keys = ["ASSISTANT_ACCESS_PASSWORD", "ASSISTANT_SESSION_SECRET", "FIRECRAWL_API_KEY", "FIRECRAWL_ENABLED"] as const;
   const original = Object.fromEntries(keys.map((name) => [name, process.env[name]]));
   process.env.ASSISTANT_ACCESS_PASSWORD = "secure-owner-demo-password";
   process.env.ASSISTANT_SESSION_SECRET = "secure-demo-session-secret-with-at-least-32-bytes";
   process.env.FIRECRAWL_API_KEY = "test-only-provider-key";
+  delete process.env.FIRECRAWL_ENABLED;
   resetRateLimitsForTests();
   return () => {
     for (const key of keys) if (original[key] === undefined) delete process.env[key]; else process.env[key] = original[key];
@@ -98,4 +99,18 @@ test("missing server key closes lookup without provider call", async () => {
     assert.equal(response.status, 503);
     assert.equal(calls, 0);
   } finally { globalThis.fetch = fetchBefore; restore(); }
+});
+
+test("Firecrawl off switch prevents outbound calls and leaves main API independent", async () => {
+  const restore = setup(), previousFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => { calls++; throw new Error("No external calls permitted while disabled"); };
+  try {
+    process.env.FIRECRAWL_ENABLED = "false";
+    const cookie = SESSION_COOKIE + "=" + createSessionToken(getAccessConfig()!);
+    const response = await search(request({ query: "минеральная вата для фасада" }, cookie));
+    assert.equal(response.status, 503);
+    assert.match((await response.json()).error, /отключён/);
+    assert.equal(calls, 0);
+  } finally { globalThis.fetch = previousFetch; restore(); }
 });
