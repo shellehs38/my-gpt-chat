@@ -13,10 +13,11 @@ export default function MaterialsSearch() {
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [enabled, setEnabled] = useState(true);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (busy || query.trim().length < 3) return;
+    if (!enabled || busy || query.trim().length < 3) return;
     setBusy(true); setError(""); setNotice(""); setItems([]); setCheckedAt("");
     try {
       const response = await fetch("/api/firecrawl/search", {
@@ -35,7 +36,13 @@ export default function MaterialsSearch() {
   }
 
   return <section className="panel" aria-label="Поиск цен фасадных материалов">
-    <h2>Материалы и поставщики · Firecrawl</h2>
+    <h2>Firecrawl (материалы, цены и поставщики)</h2>
+    <label style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, margin: "12px 0", fontSize: 14 }}>
+      <input type="checkbox" checked={enabled} disabled={busy} onChange={(event) => { setEnabled(event.target.checked); if (!event.target.checked) { setItems([]); setCheckedAt(""); setNotice(""); setError(""); } }} style={{ width: 18, minHeight: 18 }} />
+      Включить интернет-поиск Firecrawl
+    </label>
+    {!enabled && <p className="hint" role="status">Firecrawl выключен. Сметы, клиенты и расходы продолжают работать.</p>}
+    {enabled && <>
     <p className="hint">Ищем сайты поставщиков по Иркутску. Никакие найденные цены не вносятся в смету автоматически.</p>
     <form onSubmit={onSubmit}>
       <label className="field-label" htmlFor="material-search-query">Какой материал ищем?</label>
@@ -55,5 +62,6 @@ export default function MaterialsSearch() {
       </ul>}
       <p className="hint">{notice}</p>
     </div>}
+    </>}
   </section>;
 }
