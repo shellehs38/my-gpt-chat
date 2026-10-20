@@ -14,7 +14,6 @@ export default function MaterialsSearch() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [enabled, setEnabled] = useState(true);
-  const [enabled, setEnabled] = useState(true);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
