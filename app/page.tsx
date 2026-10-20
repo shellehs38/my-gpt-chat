@@ -10,6 +10,7 @@ import { buildChatPayload, decodeWorkspace, emptyWorkspace, loadWorkspace, saveW
 import type { ChatPayload, FacadeOptions, Mode, Workspace } from "@/lib/workspace-storage";
 import { MAX_MESSAGE_LENGTH, MAX_HISTORY_MESSAGE_LENGTH, MAX_BODY_BYTES } from "@/lib/chat-contract";
 import BusinessLedger from "@/components/BusinessLedger";
+import MaterialsSearch from "@/components/MaterialsSearch";
 import { brandedDocumentHtml, brandedMarkdown, COMPANY_LOGO_URL, loadCompanyLogo } from "@/lib/document-branding";
 
 const modes: { id: Mode; label: string; description: string; prompt: string }[] = [
@@ -179,6 +180,7 @@ export default function Home() {
     {auth && !auth.authenticated && <section className="panel auth-panel"><h2>Вход владельца</h2>{auth.configured ? <form onSubmit={login}><label className="field-label" htmlFor="access-password">Пароль помощника</label><input id="access-password" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required maxLength={256} /><button className="primary-button" disabled={authLoading || !password} type="submit">{authLoading ? "Проверяю…" : "Войти"}</button></form> : <p>Сервис ещё не настроен. Обратитесь к администратору.</p>}{authError && <p className="error-box" role="alert">{authError}</p>}</section>}
     {auth?.authenticated && <>
       <section className="panel"><div className="section-heading"><div><h2>Выберите направление</h2><p>Это помогает помощнику точнее учитывать задачу.</p></div><button type="button" className="secondary-button" onClick={logout} disabled={loading || ledgerBusy}>Выйти</button></div><div className="mode-grid">{modes.map((item) => <button className={workspace.mode === item.id ? "mode-card selected" : "mode-card"} type="button" key={item.id} onClick={() => setWorkspace((value) => ({ ...value, mode: item.id }))} aria-pressed={workspace.mode === item.id}><span className="mode-title">{item.label}</span><span className="mode-description">{item.description}</span></button>)}</div></section>
+      {(workspace.mode === "facade" || workspace.mode === "estimate") && <MaterialsSearch />}
       <div hidden={workspace.mode !== "business"}><BusinessLedger onBusyChange={setLedgerBusy} /></div>
       <section className="panel chat-panel" style={workspace.mode === "business" ? { display: "none" } : undefined}><div className="section-heading"><div><p className="eyebrow">ТЕКУЩИЙ РЕЖИМ</p><h2>{selectedMode.label}</h2><p>{selectedMode.description}</p></div></div>
         {(workspace.mode === "estimate" || workspace.mode === "facade") && <div className="variant-select"><label className="field-label" htmlFor="facade-options">Варианты фасада</label><select id="facade-options" value={workspace.facadeOptions} onChange={(event) => setWorkspace((value) => ({ ...value, facadeOptions: event.target.value as FacadeOptions }))}><option value="auto">Определить по запросу</option><option value="without">Без утепления</option><option value="with">С утеплением</option><option value="both">Сравнить оба варианта</option></select></div>}
