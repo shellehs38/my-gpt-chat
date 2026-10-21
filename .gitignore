@@ -14,4 +14,10 @@ test-results/
 .local/
 .codebase-memory/
 data/codebase-memory.json
+data/construction-knowledge.json
 __pycache__/
+
+# Private account-plugin metadata and instructions stay in the private release.
+/plugin-source/svoi-lyudi-builder/plugin.json
+/plugin-source/svoi-lyudi-builder/.codex-plugin/
+/plugin-source/svoi-lyudi-builder/skills/construction-assistant/SKILL.md

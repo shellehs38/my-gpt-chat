@@ -11,11 +11,14 @@
     "memory:install": "node scripts/codebase-memory.mjs install",
     "memory:index": "node scripts/codebase-memory.mjs index",
     "memory:check": "node scripts/check-codebase-memory.mjs",
+    "plugin:check": "node scripts/check-construction-plugin.mjs",
     "memory:serve": "node scripts/codebase-memory.mjs serve",
     "memory:export": "node scripts/export-codebase-memory.mjs",
-    "prebuild": "npm run memory:export",
-    "pretest": "npm run memory:export",
-    "predev": "npm run memory:export"
+    "knowledge:export": "node scripts/export-construction-knowledge.mjs",
+    "pretypecheck": "npm run knowledge:export",
+    "prebuild": "npm run plugin:check && npm run knowledge:export && npm run memory:export",
+    "pretest": "npm run plugin:check && npm run knowledge:export && npm run memory:export",
+    "predev": "npm run plugin:check && npm run knowledge:export && npm run memory:export"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.1",
