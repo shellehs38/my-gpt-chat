@@ -10,6 +10,7 @@ import { buildChatPayload, decodeWorkspace, emptyWorkspace, loadWorkspace, saveW
 import type { ChatPayload, FacadeOptions, Mode, Workspace } from "@/lib/workspace-storage";
 import { MAX_MESSAGE_LENGTH, MAX_HISTORY_MESSAGE_LENGTH, MAX_BODY_BYTES } from "@/lib/chat-contract";
 import BusinessLedger from "@/components/BusinessLedger";
+import DriveConnection from "@/components/DriveConnection";
 import { brandedDocumentHtml, brandedMarkdown, COMPANY_LOGO_URL, loadCompanyLogo } from "@/lib/document-branding";
 
 const modes: { id: Mode; label: string; description: string; prompt: string }[] = [
@@ -194,6 +195,7 @@ export default function Home() {
       </section>
     </>}
     <section className="panel storage-panel" style={auth?.authenticated && workspace.mode === "business" ? { display: "none" } : undefined}><h2>Сохранение проекта</h2><p>Диалог, версии и правки сохраняются только в этом браузере на этом устройстве. На общем компьютере после работы экспортируйте нужное и очистите данные.</p>{storageError && <p className="error-box" role="alert">{storageError}</p>}<div className="action-row"><button type="button" className="secondary-button" disabled={!hydrated} onClick={() => { try { const content = storageBlocked ? window.localStorage.getItem(WORKSPACE_STORAGE_KEY) ?? JSON.stringify(workspace) : JSON.stringify(workspace); download(content, "builder-workspace.json", "application/json"); } catch { setStorageError("Не удалось экспортировать данные браузера."); } }}>Экспортировать проект</button><label className="secondary-button import-button">Восстановить из файла<input aria-label="Восстановить проект из файла" type="file" accept="application/json,.json" disabled={loading || !hydrated} onChange={importWorkspace} /></label><button type="button" className="secondary-button" disabled={loading || !hydrated} onClick={clearWorkspace}>Очистить локальные данные</button></div></section>
+    {auth?.authenticated && <DriveConnection />}
     <footer className="footer">Проверяйте исходные данные, цены и технические требования перед выполнением работ. Расчёты несущих конструкций требуют проверки специалистом.</footer>
   </main>;
 }
