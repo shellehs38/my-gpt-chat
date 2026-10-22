@@ -16,12 +16,13 @@
     "memory:export": "node scripts/export-codebase-memory.mjs",
     "knowledge:export": "node scripts/export-construction-knowledge.mjs",
     "pretypecheck": "npm run knowledge:export",
-    "prebuild": "npm run plugin:check && npm run knowledge:export && npm run memory:export",
+    "prebuild": "node scripts/check-drive-connector.mjs && npm run plugin:check && npm run knowledge:export && npm run memory:export",
     "pretest": "npm run plugin:check && npm run knowledge:export && npm run memory:export",
     "predev": "npm run plugin:check && npm run knowledge:export && npm run memory:export"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.1",
+    "@vercel/connect": "2.5.4",
     "next": "15.5.28",
     "react": "19.1.0",
     "react-dom": "19.1.0",
