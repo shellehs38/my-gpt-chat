@@ -94,11 +94,13 @@ test("authorization and Drive probe use the same fixed scopes and stable owner a
 test("a token or OAuth completion alone never establishes access to Drive", async () => {
   const restore = environment();
   try {
-    for (const providerResponse of [new Response("sensitive-provider-error", { status: 403 }), Response.json({ unrelated: "reply" })]) {
+    for (const providerResponse of [new Response("sensitive-provider-error", { status: 403 }), new Response("temporary-provider-error", { status: 503 }), Response.json({ unrelated: "reply" })]) {
+      const expectedStatus = providerResponse.status === 403 ? "authorization_required" : "unavailable";
       const handlers = createDriveConnectHandlers({ getToken: async () => "private-token", startAuthorization: unused, fetch: async () => providerResponse });
       const response = await handlers.POST(request({ action: "check" }));
       const text = await response.text();
       assert.equal(response.status, 502);
+      assert.equal(JSON.parse(text).status, expectedStatus);
       assert.doesNotMatch(text, /"status":"connected"|private-token|sensitive-provider-error/);
     }
   } finally { restore(); }

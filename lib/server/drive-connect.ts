@@ -94,7 +94,9 @@ export function createDriveConnectHandlers(dependencies: Dependencies = {
         });
         if (!response.ok) {
           // In particular, an OpenID-only token does not establish access to Drive.
-          return reply("authorization_required", "Google не подтвердил доступ к файлам Drive. Подключите аккаунт заново.", {}, 502);
+          return response.status === 401 || response.status === 403
+            ? reply("authorization_required", "Google не подтвердил доступ к файлам Drive. Подключите аккаунт заново.", {}, 502)
+            : reply("unavailable", "Google Drive временно недоступен. Повторите проверку позже.", {}, 502);
         }
         const data: unknown = await response.json();
         if (!data || typeof data !== "object" || !("kind" in data) || data.kind !== "drive#fileList") throw new Error("Invalid Drive reply");
