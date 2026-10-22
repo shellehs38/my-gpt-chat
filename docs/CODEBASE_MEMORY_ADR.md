@@ -20,7 +20,7 @@ API защищены входом владельца, подписанной Htt
 
 ## GOOGLE DRIVE CONNECTION STAGE
 
-Drive: lib/server/drive-connect.ts; проверенный GOOGLE_DRIVE_CONNECTOR_UID и привязка проекта обязательны. Оба запроса передают openid и drive.file с owner из сессии. connected требует ответа Drive API; токены остаются на сервере. Автосохранение не реализовано, production не проверен. Sheets и JSON сохраняются.
+Drive: lib/server/drive-connect.ts; проверенный GOOGLE_DRIVE_CONNECTOR_UID и привязка проекта обязательны. Оба запроса передают openid и drive.file с owner из сессии. UI проверяет сохранённый grant при открытии; OAuth начинается только по нажатию при необходимости. connected требует ответа Drive API; токены остаются на сервере. Автосохранение не реализовано. Sheets и JSON сохраняются.
 
 ## DEVELOPMENT MEMORY
 
