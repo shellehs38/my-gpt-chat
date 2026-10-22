@@ -21,7 +21,7 @@ function reply(status: string, message: string, extra: Record<string, unknown> =
 }
 function connectorUid(): string | null {
   const value = process.env.GOOGLE_DRIVE_CONNECTOR_UID?.trim() ?? "";
-  return /^(?:google|oauth)\/[a-z0-9][a-z0-9_-]{0,79}$/.test(value) ? value : null;
+  return /^(?:(?:google|oauth)\/[a-z0-9][a-z0-9_-]{0,79}|scl_[A-Za-z0-9]{10,80})$/.test(value) ? value : null;
 }
 function allowedAuthorizationUrl(value: string): boolean {
   try {

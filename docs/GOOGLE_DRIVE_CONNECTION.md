@@ -8,7 +8,7 @@
 
 1. В Google Auth Platform используйте OAuth web client с полным Client ID и текущим секретом. Redirect URI для Vercel Connect: `https://connect.vercel.com/callback`. В режиме Testing добавьте собственный Google-аккаунт в Test users. Перед постоянной эксплуатацией отдельно проверьте требования публикации/верификации и срок действия refresh token в Testing.
 2. Создайте Google connector с этими данными в Vercel Connect. Не публикуйте секрет, пароли, OAuth URL со state, runtime-токены или JSON credentials.
-3. Скопируйте **фактический UID** созданного connector, например `google/<имя>`. Не используйте название вместо UID, неполный Google Client ID, старый connector с ошибочными настройками или предполагаемое значение.
+3. Скопируйте **фактический UID** созданного connector, например `google/<имя>`, или его точный ID `scl_…` из карточки. Не используйте название вместо UID/ID, неполный Google Client ID, старый connector с ошибочными настройками или предполагаемое значение.
 4. Привяжите именно этот connector к проекту, который обслуживает помощника, и Production. Привязка другого connector не даёт доступ новому. Для Preview/Development нужна отдельная явная привязка.
 5. Добавьте в серверное окружение `GOOGLE_DRIVE_CONNECTOR_UID` с проверенным UID, затем пересоберите deployment. Секрет Google хранится в Connect, а не в этом env и не в браузере. Vercel workload OIDC используется SDK автоматически. В текущей рабочей среде живой workload identity не настроен; локальные unit-тесты не доказывают доступ production.
 6. Войдите в помощника, нажмите «Подключить Google Drive», завершите согласие Google, вернитесь в помощника и нажмите «Проверить подключение».

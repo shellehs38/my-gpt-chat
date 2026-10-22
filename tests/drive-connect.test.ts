@@ -45,6 +45,8 @@ test("configuration GET never claims a live grant and never calls the provider",
   const handlers = createDriveConnectHandlers({ getToken: unused, startAuthorization: unused, fetch: unused });
   try {
     assert.equal((await (await handlers.GET(request())).json()).status, "unchecked");
+    process.env.GOOGLE_DRIVE_CONNECTOR_UID = "scl_UnitVerifiedConnector123";
+    assert.equal((await (await handlers.GET(request())).json()).status, "unchecked");
     for (const invalid of ["", "apps.googleusercontent.com", "https://attacker.example", "google/a?subject=other"]) {
       process.env.GOOGLE_DRIVE_CONNECTOR_UID = invalid;
       const response = await handlers.GET(request());
