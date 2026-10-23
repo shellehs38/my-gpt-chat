@@ -188,7 +188,7 @@ export default function Home() {
     finally { exportInFlight.current = false; setExportBusy(false); }
   }
   return <main className="app-shell">
-    <header className="hero"><img className="company-logo" src={COMPANY_LOGO_URL} width={1672} height={941} alt="Логотип СВОИ ЛЮДИ" /><div><p className="eyebrow">СТРОИТЕЛЬНЫЙ ПОМОЩНИК</p><h1>«СВОИ ЛЮДИ»</h1><p className="subtitle">Помощник для строительного бизнеса в Иркутске</p></div></header>
+    <header className="hero"><img className="company-logo" src={COMPANY_LOGO_URL} width={1672} height={941} alt="Логотип СВОИ ЛЮДИ" /><div><h1 className="eyebrow">СТРОИТЕЛЬНЫЙ ПОМОЩНИК</h1><p className="subtitle">Помощник для строительного бизнеса в Иркутске</p></div></header>
     {!auth && <p className="status" role="status">Проверяю доступ…</p>}
     {auth && !auth.authenticated && <section className="panel auth-panel"><h2>Вход владельца</h2>{auth.configured ? <form onSubmit={login}><label className="field-label" htmlFor="access-password">Пароль помощника</label><input id="access-password" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required maxLength={256} /><button className="primary-button" disabled={authLoading || !password} type="submit">{authLoading ? "Проверяю…" : "Войти"}</button></form> : <p>Сервис ещё не настроен. Обратитесь к администратору.</p>}{authError && <p className="error-box" role="alert">{authError}</p>}</section>}
     {auth?.authenticated && <>
