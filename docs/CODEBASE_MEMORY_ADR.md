@@ -20,7 +20,7 @@ API защищены входом владельца, подписанной Htt
 
 ## GOOGLE DRIVE CONNECTION STAGE
 
-Drive: lib/server/drive-connect.ts; проверенный GOOGLE_DRIVE_CONNECTOR_UID и привязка проекта обязательны. Оба запроса передают openid и drive.file с owner из сессии. UI проверяет сохранённый grant при открытии; OAuth начинается только по нажатию при необходимости. connected требует ответа Drive API; токены остаются на сервере. Автосохранение не реализовано. Sheets и JSON сохраняются.
+Drive: drive-connect.ts хранит OAuth на сервере (openid + drive.file, стабильный owner). drive-workspace.ts сохраняет неизменяемые JSON-версии workspace: диалог, черновик, сметы и правки. DriveAutosave ведёт durable outbox до upload, повторяет выделенный ID и восстанавливает проект; saved требует проверки папки, размера, SHA-256 и чтения. Ветки сохраняются до явного выбора. Local clear ставит паузу, не удаляет облако. OAuth только по нажатию при необходимости. JSON-экспорт и Sheets сохраняются; фото и отдельный калькулятор ещё не интегрированы.
 
 ## DEVELOPMENT MEMORY
 
