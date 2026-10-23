@@ -19,7 +19,7 @@ const noStore = { "Cache-Control": "no-store" };
 function reply(status: string, message: string, extra: Record<string, unknown> = {}, httpStatus = 200) {
   return NextResponse.json({ status, message, ...extra }, { status: httpStatus, headers: noStore });
 }
-function connectorUid(): string | null {
+export function connectorUid(): string | null {
   const value = process.env.GOOGLE_DRIVE_CONNECTOR_UID?.trim() ?? "";
   return /^(?:(?:google|oauth)\/[a-z0-9][a-z0-9_-]{0,79}|scl_[A-Za-z0-9]{10,80})$/.test(value) ? value : null;
 }
@@ -100,7 +100,7 @@ export function createDriveConnectHandlers(dependencies: Dependencies = {
         }
         const data: unknown = await response.json();
         if (!data || typeof data !== "object" || !("kind" in data) || data.kind !== "drive#fileList") throw new Error("Invalid Drive reply");
-        return reply("connected", "Доступ к Google Drive проверен. Автоматическое сохранение проектов ещё не включено.");
+        return reply("connected", "Доступ к Google Drive проверен.");
       } catch (error) { return connectionFailure(error); }
     },
   };

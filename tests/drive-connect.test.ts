@@ -82,7 +82,7 @@ test("authorization and Drive probe use the same fixed scopes and stable owner a
     const checked = await handlers.POST(request({ action: "check" }));
     const data = await checked.json();
     assert.equal(data.status, "connected");
-    assert.match(data.message, /сохранение проектов ещё не включено/);
+    assert.match(data.message, /Доступ к Google Drive проверен/);
     assert.doesNotMatch(JSON.stringify(data), /unit-only-provider-token/);
     assert.deepEqual(calls, [
       ["google/unit-drive", { subject: { type: "user", id: "owner" }, scopes: ["openid", "https://www.googleapis.com/auth/drive.file"] }],
