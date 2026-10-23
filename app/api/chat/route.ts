@@ -54,11 +54,12 @@ export async function POST(request: Request) {
         (requiresFullEstimate(body) && !hasRequiredEstimateSections(raw, requestedFacadeOptions(body)))) {
       return errorResponse("ИИ вернул неполный или повреждённый ответ. Смета не заменена. Повторите запрос или разделите его на меньшие части.", 502);
     }
-    const withScaffold = isEstimateRequest(body) && isFacadeRequest(body) ? ensureScaffoldRows(raw) : raw;
+    const estimate = isEstimateRequest(body);
+    const withScaffold = estimate && isFacadeRequest(body) ? ensureScaffoldRows(raw) : raw;
     const document = parseEstimateDocument(withScaffold);
     // Browser and API share precisely the same calculation/serialization path.
-    const reply = document.blocks.some((block) => block.type === "table") ? serializeEstimateDocument(document) : withScaffold;
-    return NextResponse.json({ reply, memory: memoryStatus(memory) }, { headers: { "Cache-Control": "no-store" } });
+    const reply = estimate && document.blocks.some((block) => block.type === "table") ? serializeEstimateDocument(document) : withScaffold;
+    return NextResponse.json({ reply, calculation: estimate ? "estimate" : "none", memory: memoryStatus(memory) }, { headers: { "Cache-Control": "no-store" } });
   } catch {
     return errorResponse(controller.signal.aborted ? "Сервис ИИ отвечает слишком долго. Попробуйте ещё раз." : "Не удалось связаться с сервисом ИИ. Попробуйте позже.", controller.signal.aborted ? 504 : 502);
   } finally {

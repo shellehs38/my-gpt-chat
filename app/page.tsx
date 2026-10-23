@@ -6,22 +6,15 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { calculateEstimateDocument, createDocumentId, displayedCell, formatEstimateProse, formatKopecks, parseEstimateDocument, serializeEstimateDocument, updateEstimateCell } from "@/lib/estimate";
 import type { CalculatedTable, EstimateDocument, EstimateRow, EstimateTable } from "@/lib/estimate";
-import { buildChatPayload, decodeWorkspace, emptyWorkspace, loadWorkspace, saveWorkspace, MAX_WORKSPACE_BYTES, WORKSPACE_STORAGE_KEY } from "@/lib/workspace-storage";
+import { activeModeDocument, appendModeReply, buildChatPayload, decodeWorkspace, emptyWorkspace, loadWorkspace, modeDocuments, modeMessages, pendingModeRequest, recordModeRequest, saveWorkspace, switchWorkspaceMode, MAX_WORKSPACE_BYTES, WORKSPACE_STORAGE_KEY } from "@/lib/workspace-storage";
 import type { ChatPayload, FacadeOptions, Mode, Workspace } from "@/lib/workspace-storage";
+import { ASSISTANT_MODES as modes, revisionRequest } from "@/lib/assistant-modes";
 import { MAX_MESSAGE_LENGTH, MAX_HISTORY_MESSAGE_LENGTH, MAX_BODY_BYTES } from "@/lib/chat-contract";
 import BusinessLedger from "@/components/BusinessLedger";
 import DriveConnection from "@/components/DriveConnection";
 import type { DriveAutosave } from "@/lib/drive-autosave";
 import { brandedDocumentHtml, brandedMarkdown, COMPANY_LOGO_URL, loadCompanyLogo } from "@/lib/document-branding";
 
-const modes: { id: Mode; label: string; description: string; prompt: string }[] = [
-  { id: "general", label: "Общий помощник", description: "Дом, стройка и организация работ", prompt: "Опиши задачу, объект или вопрос по строительству." },
-  { id: "estimate", label: "Смета и расчёты", description: "Материалы, работы, количество и стоимость", prompt: "Например: помоги составить смету. Сначала уточни недостающие исходные данные." },
-  { id: "engineering", label: "Технологии и конструкции", description: "Фундаменты, стены, подпорные стены, кровля", prompt: "Опиши конструкцию и исходные данные. Укажи, какие сведения ещё необходимы для безопасной оценки." },
-  { id: "facade", label: "Фасады", description: "Сайдинг, панели, утепление и подсистемы", prompt: "Опиши дом, площадь фасада, облицовку и необходимость утепления." },
-  { id: "business", label: "Бизнес и продажи", description: "Клиенты, объекты и запись расходов в таблицу", prompt: "Назовите клиента или поручите внести расходы." },
-  { id: "documents", label: "Документы", description: "Коммерческие предложения, договоры и акты", prompt: "Укажи вид документа, стороны, объект, объём работ и известные условия." },
-];
 type AuthState = { authenticated: boolean; configured: boolean };
 const bytes = (value: unknown) => new TextEncoder().encode(typeof value === "string" ? value : JSON.stringify(value)).byteLength;
 function download(content: string, name: string, type: string) {
@@ -29,27 +22,28 @@ function download(content: string, name: string, type: string) {
   const link = document.createElement("a"); link.href = url; link.download = name; link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
-function TableEditor({ table, calculation, onEdit }: { table: EstimateTable; calculation: CalculatedTable; onEdit: (tableId: string, rowId: string, index: number, value: string) => void }) {
-  const extraSum = calculation.hasCalculation && calculation.sumIndex < 0;
+function TableEditor({ table, calculation, onEdit, calculate = true }: { table: EstimateTable; calculation: CalculatedTable; calculate?: boolean; onEdit: (tableId: string, rowId: string, index: number, value: string) => void }) {
+  const hasCalculation = calculate && calculation.hasCalculation;
+  const extraSum = hasCalculation && calculation.sumIndex < 0;
   const headers = extraSum ? [...table.headers, "Сумма, руб. (расчёт)"] : table.headers;
   const value = (row: EstimateRow, index: number) => {
-    if (index < table.headers.length) return displayedCell(row, index, calculation);
+    if (index < table.headers.length) return calculate ? displayedCell(row, index, calculation) : row.cells[index] ?? "";
     const result = calculation.rows.find((item) => item.rowId === row.id)!;
     return result.kind === "section" ? "" : result.amountKopecks === null ? "Не рассчитано" : `${formatKopecks(result.amountKopecks)}${result.complete ? "" : " (неполно)"}`;
   };
   const field = (row: EstimateRow, index: number, mobile: boolean) => {
-    const readOnly = index === calculation.sumIndex && calculation.hasCalculation || index >= table.headers.length;
+    const readOnly = index === calculation.sumIndex && hasCalculation || index >= table.headers.length;
     return <textarea className="estimate-card-input" aria-label={`${table.title}, строка ${table.rows.indexOf(row) + 1}: ${headers[index]}`} data-cell-id={`${row.id}:${index}`} value={value(row, index)} readOnly={readOnly} rows={mobile ? Math.min(5, Math.max(1, Math.ceil(value(row, index).length / 25))) : 2} inputMode={index === calculation.quantityIndex || index === calculation.priceIndex ? "decimal" : "text"} maxLength={2000} onChange={(event) => onEdit(table.id, row.id, index, event.target.value)} />;
   };
   return <section className="estimate-table" aria-label={`Таблица: ${table.title}`}>
     <div className="desktop-table-scroll"><table><thead><tr>{headers.map((header, index) => <th key={index} scope="col">{header}</th>)}</tr></thead><tbody>{table.rows.map((row) => <tr key={row.id} data-row-id={row.id}>{headers.map((_, index) => <td key={index}>{field(row, index, false)}</td>)}</tr>)}</tbody></table></div>
     <div className="mobile-table-cards">{table.rows.map((row) => <section className="mobile-table-card" key={row.id} data-row-id={row.id}>{headers.map((header, index) => <div className="mobile-table-field" key={index}><span className="mobile-table-label">{header}</span><div className="mobile-table-value">{field(row, index, true)}</div></div>)}</section>)}</div>
-    {calculation.hasCalculation && <p className={`calculation-summary ${calculation.complete ? "" : "calculation-incomplete"}`}><strong>{calculation.complete ? "Арифметический итог" : "Известная часть"}: {formatKopecks(calculation.knownTotalKopecks)} ₽.</strong> {calculation.complete ? "Рассчитано из количества и цены каждой позиции. Проверьте объёмы и актуальность цен." : "Полный итог не определён. Заполните количество и цену всех позиций; неизвестные значения не равны нулю."}</p>}
+    {hasCalculation && <p className={`calculation-summary ${calculation.complete ? "" : "calculation-incomplete"}`}><strong>{calculation.complete ? "Арифметический итог" : "Известная часть"}: {formatKopecks(calculation.knownTotalKopecks)} ₽.</strong> {calculation.complete ? "Рассчитано из количества и цены каждой позиции. Проверьте объёмы и актуальность цен." : "Полный итог не определён. Заполните количество и цену всех позиций; неизвестные значения не равны нулю."}</p>}
   </section>;
 }
-function DocumentEditor({ document, onEdit }: { document: EstimateDocument; onEdit: (tableId: string, rowId: string, index: number, value: string) => void }) {
+function DocumentEditor({ document, onEdit, calculate = true }: { document: EstimateDocument; calculate?: boolean; onEdit: (tableId: string, rowId: string, index: number, value: string) => void }) {
   const calculation = useMemo(() => calculateEstimateDocument(document), [document]);
-  return <div className="markdown-content">{document.blocks.map((block) => block.type === "table" ? <TableEditor key={block.id} table={block} calculation={calculation.tables.find((item) => item.tableId === block.id)!} onEdit={onEdit} /> : <ReactMarkdown key={block.id} remarkPlugins={[remarkGfm]}>{formatEstimateProse(block.text, calculation.hasCalculation)}</ReactMarkdown>)}</div>;
+  return <div className="markdown-content">{document.blocks.map((block) => block.type === "table" ? <TableEditor key={block.id} table={block} calculation={calculation.tables.find((item) => item.tableId === block.id)!} onEdit={onEdit} calculate={calculate} /> : <ReactMarkdown key={block.id} remarkPlugins={[remarkGfm]}>{formatEstimateProse(block.text, calculate && calculation.hasCalculation)}</ReactMarkdown>)}</div>;
 }
 
 export default function Home() {
@@ -61,11 +55,18 @@ export default function Home() {
   const [authError, setAuthError] = useState("");
   const [password, setPassword] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [pendingMode, setPendingMode] = useState<Mode | null>(null);
+  const [businessView, setBusinessView] = useState<"accounting" | "sales">("accounting");
+  const loading = pendingMode === workspace.mode;
+  const requestBusy = pendingMode !== null;
   const [ledgerBusy, setLedgerBusy] = useState(false);
   const [exportBusy, setExportBusy] = useState(false);
-  const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
+  const [errors, setErrors] = useState<Partial<Record<Mode, string>>>({});
+  const [notices, setNotices] = useState<Partial<Record<Mode, string>>>({});
+  const error = errors[workspace.mode] ?? "";
+  const notice = notices[workspace.mode] ?? "";
+  function setError(message: string, mode = workspace.mode) { setErrors(values => ({ ...values, [mode]: message })); }
+  function setNotice(message: string, mode = workspace.mode) { setNotices(values => ({ ...values, [mode]: message })); }
   const inFlight = useRef(false);
   const exportInFlight = useRef(false);
   const cloud = useRef<DriveAutosave | null>(null);
@@ -93,7 +94,11 @@ export default function Home() {
     window.addEventListener("pagehide", flush); return () => window.removeEventListener("pagehide", flush);
   }, [workspace, hydrated, storageBlocked]);
   const selectedMode = modes.find((item) => item.id === workspace.mode) ?? modes[0];
-  const current = workspace.documents.find((item) => item.id === workspace.activeDocumentId);
+  const current = activeModeDocument(workspace);
+  const versions = modeDocuments(workspace);
+  const messages = useMemo(() => modeMessages(workspace), [workspace.messages, workspace.documents, workspace.mode, workspace.legacyMode]);
+  const failedRequest = pendingModeRequest(workspace);
+  const currentCalculation = useMemo(() => current && current.calculation !== "none" ? calculateEstimateDocument(current.document) : undefined, [current]);
   async function login(event: FormEvent) {
     event.preventDefault(); if (authLoading) return;
     setAuthLoading(true); setAuthError("");
@@ -107,34 +112,40 @@ export default function Home() {
   }
   async function sendPayload(payload: ChatPayload) {
     if (inFlight.current || !auth?.authenticated) return;
-    if (payload.message.length > MAX_MESSAGE_LENGTH || bytes(payload) > MAX_BODY_BYTES) { setError("Запрос слишком велик. Сократите сообщение или сохраните смету отдельно."); return; }
-    inFlight.current = true; setLoading(true); setError(""); setNotice("");
-    setWorkspace((value) => ({ ...value, failedRequest: payload }));
+    if (payload.message.length > MAX_MESSAGE_LENGTH || bytes(payload) > MAX_BODY_BYTES) { setError("Запрос слишком велик. Сократите сообщение или экспортируйте документ отдельно."); return; }
+    inFlight.current = true; setPendingMode(payload.mode); setError("", payload.mode); setNotice("", payload.mode);
+    setWorkspace(value => recordModeRequest(value, payload));
     try {
       const response = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const data = await response.json();
       if (!response.ok) { if (response.status === 401) setAuth((value) => value ? { ...value, authenticated: false } : value); throw new Error(data.error || "Ошибка запроса."); }
       if (typeof data.reply !== "string" || !data.reply.trim()) throw new Error("Помощник не вернул ответ. Предыдущие данные сохранены.");
-      const id = createDocumentId(); const document = parseEstimateDocument(data.reply, id);
-      setWorkspace((value) => ({ ...value, draft: value.draft === payload.message ? "" : value.draft, failedRequest: undefined, messages: [...value.messages, { id: createDocumentId(), role: "user" as const, content: payload.message }, { id: createDocumentId(), role: "assistant" as const, content: data.reply, documentId: id }], documents: [...value.documents, { id, createdAt: new Date().toISOString(), mode: payload.mode, prompt: payload.message, document }], activeDocumentId: id }));
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Не удалось получить ответ. Смета и правки сохранены."); }
-    finally { inFlight.current = false; setLoading(false); }
+      const id = createDocumentId();
+      const calculation = data.calculation === "estimate" || data.calculation === "none" ? data.calculation
+        : payload.mode === "estimate" || payload.mode === "facade" ? "estimate" : "none";
+      const document = parseEstimateDocument(data.reply, id, calculation !== "none");
+      const version = { id, createdAt: new Date().toISOString(), mode: payload.mode, prompt: payload.message, document, calculation: calculation as "estimate" | "none" };
+      const userId = createDocumentId(), assistantId = createDocumentId();
+      setWorkspace(value => appendModeReply(value, payload, version, data.reply, userId, assistantId));
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Не удалось получить ответ. Предыдущие данные сохранены.", payload.mode); }
+    finally { inFlight.current = false; setPendingMode(null); }
   }
   function submit(event: FormEvent) { event.preventDefault(); const message = workspace.draft.trim(); if (message) void sendPayload(buildChatPayload(workspace, message)); }
   function editCell(tableId: string, rowId: string, index: number, value: string) {
-    setWorkspace((previous) => ({ ...previous, documents: previous.documents.map((version) => version.id === previous.activeDocumentId ? { ...version, document: updateEstimateCell(version.document, tableId, rowId, index, value) } : version) }));
+    setWorkspace((previous) => ({ ...previous, documents: previous.documents.map((version) => version.id === current?.id && version.mode === workspace.mode ? { ...version, document: updateEstimateCell(version.document, tableId, rowId, index, value) } : version) }));
   }
   function snapshot() {
     if (!current) return;
     const id = createDocumentId();
-    const version = { ...current, id, createdAt: new Date().toISOString(), document: parseEstimateDocument(serializeEstimateDocument(current.document), id) };
+    const version = { ...current, id, createdAt: new Date().toISOString(), document: parseEstimateDocument(serializeEstimateDocument(current.document, current.calculation !== "none"), id, current.calculation !== "none") };
     setWorkspace((value) => ({ ...value, documents: [...value.documents, version], activeDocumentId: id })); setNotice("Версия сохранена в этом браузере.");
   }
   function requestRevision() {
     if (!current) return;
-    const payload = buildChatPayload(workspace, "Проверь текущую отредактированную смету. Сохрани все позиции, варианты, единицы и примечания; не добавляй вымышленные цены. Уточни только недостающие данные и верни полную смету.");
-    const content = serializeEstimateDocument(current.document);
-    if (content.length > MAX_HISTORY_MESSAGE_LENGTH) { setError("Смета слишком велика для одного запроса. Экспортируйте её и разбейте проверку по разделам."); return; }
+    const prompt = revisionRequest(workspace.mode, current.document, current.calculation !== "none");
+    const payload = buildChatPayload(workspace, prompt);
+    const content = serializeEstimateDocument(current.document, current.calculation !== "none");
+    if (content.length > MAX_HISTORY_MESSAGE_LENGTH) { setError("Документ слишком велик для одного запроса. Экспортируйте его и разбейте проверку по разделам."); return; }
     void sendPayload(payload);
   }
   async function importWorkspace(event: ChangeEvent<HTMLInputElement>) {
@@ -147,18 +158,18 @@ export default function Home() {
       if (!window.confirm("Заменить локальный проект данными из файла? Текущий проект можно предварительно экспортировать.")) return;
       // Validate and successfully save the replacement before changing the visible workspace.
       saveWorkspace(window.localStorage, imported);
-      setWorkspace(imported); setStorageBlocked(false); setStorageError(""); setError(""); setNotice("Проект восстановлен из файла в этом браузере.");
+      setWorkspace(imported); setStorageBlocked(false); setStorageError(""); setErrors({}); setNotices({ [imported.mode]: "Проект восстановлен из файла в этом браузере." });
     } catch (cause) { setStorageError(cause instanceof Error ? cause.message : "Не удалось прочитать файл. Текущий проект сохранён."); }
     finally { input.value = ""; }
   }
   function clearWorkspace() {
     if (!window.confirm("Удалить диалог и все версии из этого браузера? Сначала можно экспортировать резервную копию.")) return;
-    try { cloud.current?.pause(); window.localStorage.removeItem(WORKSPACE_STORAGE_KEY); setStorageBlocked(false); setWorkspace(emptyWorkspace()); setStorageError(""); setError(""); setNotice("Локальные данные удалены."); } catch { setStorageError("Браузер не разрешил удалить данные."); }
+    try { cloud.current?.pause(); window.localStorage.removeItem(WORKSPACE_STORAGE_KEY); setStorageBlocked(false); setWorkspace(emptyWorkspace()); setStorageError(""); setErrors({}); setNotices({ general: "Локальные данные удалены." }); } catch { setStorageError("Браузер не разрешил удалить данные."); }
   }
   async function copyAnswer() {
     if (!current) return;
-    try { await navigator.clipboard.writeText(brandedMarkdown(serializeEstimateDocument(current.document), window.location.origin)); setNotice("Скопирована текущая версия с вашими правками, пересчитанными суммами и ссылкой на логотип. Для файла со встроенным изображением используйте «Скачать документ с логотипом»."); }
-    catch { setNotice("Копирование недоступно в этом браузере. Используйте «Скачать смету»."); }
+    try { await navigator.clipboard.writeText(brandedMarkdown(serializeEstimateDocument(current.document, current.calculation !== "none"), window.location.origin)); setNotice("Скопирована текущая версия с вашими правками и ссылкой на логотип. Для файла со встроенным изображением используйте «Скачать документ с логотипом»."); }
+    catch { setNotice("Копирование недоступно в этом браузере. Используйте «Скачать текст»."); }
   }
   async function downloadBrandedDocument() {
     if (!current || !documentContent.current || exportInFlight.current) return;
@@ -181,22 +192,26 @@ export default function Home() {
     {!auth && <p className="status" role="status">Проверяю доступ…</p>}
     {auth && !auth.authenticated && <section className="panel auth-panel"><h2>Вход владельца</h2>{auth.configured ? <form onSubmit={login}><label className="field-label" htmlFor="access-password">Пароль помощника</label><input id="access-password" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required maxLength={256} /><button className="primary-button" disabled={authLoading || !password} type="submit">{authLoading ? "Проверяю…" : "Войти"}</button></form> : <p>Сервис ещё не настроен. Обратитесь к администратору.</p>}{authError && <p className="error-box" role="alert">{authError}</p>}</section>}
     {auth?.authenticated && <>
-      <section className="panel"><div className="section-heading"><div><h2>Выберите направление</h2><p>Это помогает помощнику точнее учитывать задачу.</p></div><button type="button" className="secondary-button" onClick={logout} disabled={loading || ledgerBusy}>Выйти</button></div><div className="mode-grid">{modes.map((item) => <button className={workspace.mode === item.id ? "mode-card selected" : "mode-card"} type="button" key={item.id} onClick={() => setWorkspace((value) => ({ ...value, mode: item.id }))} aria-pressed={workspace.mode === item.id}><span className="mode-title">{item.label}</span><span className="mode-description">{item.description}</span></button>)}</div></section>
-      <div hidden={workspace.mode !== "business"}><BusinessLedger onBusyChange={setLedgerBusy} /></div>
-      <section className="panel chat-panel" style={workspace.mode === "business" ? { display: "none" } : undefined}><div className="section-heading"><div><p className="eyebrow">ТЕКУЩИЙ РЕЖИМ</p><h2>{selectedMode.label}</h2><p>{selectedMode.description}</p></div></div>
-        {(workspace.mode === "estimate" || workspace.mode === "facade") && <div className="variant-select"><label className="field-label" htmlFor="facade-options">Варианты фасада</label><select id="facade-options" value={workspace.facadeOptions} onChange={(event) => setWorkspace((value) => ({ ...value, facadeOptions: event.target.value as FacadeOptions }))}><option value="auto">Определить по запросу</option><option value="without">Без утепления</option><option value="with">С утеплением</option><option value="both">Сравнить оба варианта</option></select></div>}
-        <form onSubmit={submit}><label className="field-label" htmlFor="message">Опишите задачу</label><textarea id="message" value={workspace.draft} onChange={(event) => setWorkspace((value) => ({ ...value, draft: event.target.value }))} placeholder={selectedMode.prompt} rows={5} maxLength={MAX_MESSAGE_LENGTH} /><div className="form-footer"><span className="hint">{workspace.draft.length}/{MAX_MESSAGE_LENGTH} символов. Предыдущие вопросы учитываются.</span><button className="primary-button" type="submit" disabled={loading || !workspace.draft.trim() || !hydrated}>{loading ? "Готовлю ответ…" : "Отправить вопрос"}</button></div></form>
-        {loading && <div className="status" role="status">Анализирую задачу. Предыдущая смета и правки остаются доступными.</div>}
-        {error && <div className="error-box" role="alert"><strong>Не удалось получить ответ</strong><p>{error}</p>{workspace.failedRequest && <button className="secondary-button" type="button" disabled={loading} onClick={() => void sendPayload(workspace.failedRequest!)}>Повторить тот же запрос</button>}</div>}
-        {!error && !loading && workspace.failedRequest && <div className="status"><p>Предыдущий запрос не завершён. Смета и внесённые правки сохранены.</p><button className="secondary-button" type="button" onClick={() => void sendPayload(workspace.failedRequest!)}>Повторить тот же запрос</button></div>}
+      <section className="panel"><div className="section-heading"><div><h2>Выберите направление</h2><p>Это помогает помощнику точнее учитывать задачу.</p></div><button type="button" className="secondary-button" onClick={logout} disabled={requestBusy || ledgerBusy}>Выйти</button></div><div className="mode-grid">{modes.map((item) => <button className={workspace.mode === item.id ? "mode-card selected" : "mode-card"} type="button" key={item.id} onClick={() => setWorkspace(value => switchWorkspaceMode(value, item.id))} aria-pressed={workspace.mode === item.id}><span className="mode-title">{item.label}</span><span className="mode-description">{item.description}</span></button>)}</div></section>
+      {workspace.mode === "business" && <section className="panel"><h2>Бизнес и продажи</h2><div className="action-row" role="group" aria-label="Разделы бизнеса"><button type="button" className={businessView === "accounting" ? "primary-button" : "secondary-button"} aria-pressed={businessView === "accounting"} onClick={() => setBusinessView("accounting")}>Клиенты и учёт</button><button type="button" className={businessView === "sales" ? "primary-button" : "secondary-button"} aria-pressed={businessView === "sales"} onClick={() => setBusinessView("sales")}>Продажи и развитие</button></div><p>{businessView === "accounting" ? "Клиенты, объекты и расходы: чтение и запись в рабочую таблицу." : "Консультации по продажам, переговорам и привлечению заказов. Сообщения здесь не записывают клиентов или расходы в таблицу."}</p></section>}
+      <div hidden={workspace.mode !== "business" || businessView !== "accounting"}><BusinessLedger onBusyChange={setLedgerBusy} /></div>
+      <section className="panel chat-panel" style={workspace.mode === "business" && businessView === "accounting" ? { display: "none" } : undefined}><div className="section-heading"><div><p className="eyebrow">ТЕКУЩИЙ РЕЖИМ</p><h2>{selectedMode.label}</h2><p>{selectedMode.description}</p></div></div>
+        {workspace.mode === "facade" && <div className="variant-select"><label className="field-label" htmlFor="facade-options">Варианты фасада</label><select id="facade-options" value={workspace.facadeOptions} onChange={(event) => setWorkspace((value) => ({ ...value, facadeOptions: event.target.value as FacadeOptions }))}><option value="auto">Определить по запросу</option><option value="without">Без утепления</option><option value="with">С утеплением</option><option value="both">Сравнить оба варианта</option></select></div>}
+        <p>У этой вкладки свой диалог, черновик и сохранённые ответы.</p>
+        <div className="action-row" aria-label="Примеры задач">{selectedMode.examples.map(example => <button type="button" className="secondary-button" key={example} onClick={() => setWorkspace(value => ({ ...value, draft: example }))}>{example}</button>)}</div>
+        {pendingMode && pendingMode !== workspace.mode && <p className="status" role="status">Выполняется запрос во вкладке «{modes.find(item => item.id === pendingMode)?.label}». Здесь можно подготовить черновик.</p>}
+        <form onSubmit={submit}><label className="field-label" htmlFor="message">Опишите задачу</label><textarea id="message" value={workspace.draft} onChange={(event) => setWorkspace((value) => ({ ...value, draft: event.target.value }))} placeholder={selectedMode.prompt} rows={5} maxLength={MAX_MESSAGE_LENGTH} /><div className="form-footer"><span className="hint">{workspace.draft.length}/{MAX_MESSAGE_LENGTH} символов. Предыдущие вопросы учитываются.</span><button className="primary-button" type="submit" disabled={requestBusy || !workspace.draft.trim() || !hydrated}>{loading ? "Готовлю ответ…" : "Отправить вопрос"}</button></div></form>
+        {loading && <div className="status" role="status">Анализирую задачу. Предыдущий ответ и правки остаются доступными.</div>}
+        {error && <div className="error-box" role="alert"><strong>Не удалось получить ответ</strong><p>{error}</p>{failedRequest && <button className="secondary-button" type="button" disabled={requestBusy} onClick={() => void sendPayload(failedRequest!)}>Повторить тот же запрос</button>}</div>}
+        {!error && !loading && failedRequest && <div className="status"><p>Предыдущий запрос не завершён. Ответы и внесённые правки сохранены в этой вкладке.</p><button className="secondary-button" type="button" onClick={() => void sendPayload(failedRequest!)}>Повторить тот же запрос</button></div>}
         {notice && <p className="status" role="status">{notice}</p>}
-        {current && <article className="answer"><img className="document-logo" src={COMPANY_LOGO_URL} width={1672} height={941} alt="Логотип СВОИ ЛЮДИ на документе" /><div className="answer-heading"><span className="answer-dot" /><h3>Ответ помощника</h3></div><label className="field-label version-label" htmlFor="document-version">Сохранённая версия</label><select id="document-version" value={current.id} onChange={(event) => setWorkspace((value) => ({ ...value, activeDocumentId: event.target.value }))}>{workspace.documents.map((version, index) => <option key={version.id} value={version.id}>Версия {index + 1} · {new Date(version.createdAt).toLocaleString("ru-RU")} · {version.prompt.slice(0, 48)}</option>)}</select><div ref={documentContent}><DocumentEditor document={current.document} onEdit={editCell} /></div>
-          {current.document.blocks.some((block) => block.type === "table") && <div className="estimate-edit-actions"><p>Меняйте поля таблицы или карточек. Единицы измерения сохраняются; суммы рассчитываются автоматически. Неизвестная цена требует уточнения.</p><button className="primary-button" type="button" disabled={loading} onClick={requestRevision}>Проверить текущую смету с помощником</button></div>}
-          <div className="action-row"><button className="secondary-button" type="button" disabled={exportBusy} onClick={() => void downloadBrandedDocument()}>{exportBusy ? "Готовлю файл с логотипом…" : "Скачать документ с логотипом"}</button><button className="secondary-button" type="button" onClick={copyAnswer}>Копировать ответ</button><button className="secondary-button" type="button" onClick={() => download(brandedMarkdown(serializeEstimateDocument(current.document), window.location.origin), "smeta.md", "text/markdown;charset=utf-8")}>Скачать смету</button><button className="secondary-button" type="button" onClick={snapshot}>Сохранить отдельную версию</button></div></article>}
-        {workspace.messages.length > 0 && <details className="conversation-history"><summary>История диалога ({workspace.messages.length})</summary>{workspace.messages.map((item) => <div className="history-message" key={item.id}><strong>{item.role === "user" ? "Вы" : "Помощник"}</strong><p>{item.content}</p>{item.documentId && workspace.documents.some((version) => version.id === item.documentId) && <button className="secondary-button" type="button" onClick={() => setWorkspace((value) => ({ ...value, activeDocumentId: item.documentId! }))}>Открыть сохранённый ответ</button>}</div>)}</details>}
+        {current && <article className="answer"><img className="document-logo" src={COMPANY_LOGO_URL} width={1672} height={941} alt="Логотип СВОИ ЛЮДИ на документе" /><div className="answer-heading"><span className="answer-dot" /><h3>Ответ помощника</h3></div><label className="field-label version-label" htmlFor="document-version">Сохранённая версия</label><select id="document-version" value={current.id} onChange={(event) => setWorkspace((value) => ({ ...value, activeDocumentId: event.target.value }))}>{versions.map((version, index) => <option key={version.id} value={version.id}>Версия {index + 1} · {new Date(version.createdAt).toLocaleString("ru-RU")} · {version.prompt.slice(0, 48)}</option>)}</select><div ref={documentContent}><DocumentEditor document={current.document} onEdit={editCell} calculate={current.calculation !== "none"} /></div>
+          <div className="estimate-edit-actions">{currentCalculation?.hasCalculation && <p>Меняйте поля таблицы или карточек. Единицы измерения сохраняются; суммы рассчитываются автоматически. Неизвестная цена требует уточнения.</p>}<button className="primary-button" type="button" disabled={requestBusy} onClick={requestRevision}>{selectedMode.revisionLabel}</button></div>
+          <div className="action-row"><button className="secondary-button" type="button" disabled={exportBusy} onClick={() => void downloadBrandedDocument()}>{exportBusy ? "Готовлю файл с логотипом…" : "Скачать документ с логотипом"}</button><button className="secondary-button" type="button" onClick={copyAnswer}>Копировать ответ</button><button className="secondary-button" type="button" onClick={() => download(brandedMarkdown(serializeEstimateDocument(current.document, current.calculation !== "none"), window.location.origin), `builder-${workspace.mode}.md`, "text/markdown;charset=utf-8")}>Скачать текст</button><button className="secondary-button" type="button" onClick={snapshot}>Сохранить отдельную версию</button></div></article>}
+        {messages.length > 0 && <details className="conversation-history"><summary>История вкладки ({messages.length})</summary>{messages.map((item) => <div className="history-message" key={item.id}><strong>{item.role === "user" ? "Вы" : "Помощник"}</strong><p>{item.content}</p>{item.documentId && versions.some((version) => version.id === item.documentId) && <button className="secondary-button" type="button" onClick={() => setWorkspace((value) => ({ ...value, activeDocumentId: item.documentId! }))}>Открыть сохранённый ответ</button>}</div>)}</details>}
       </section>
     </>}
-    <section className="panel storage-panel" style={auth?.authenticated && workspace.mode === "business" ? { display: "none" } : undefined}><h2>Сохранение проекта</h2><p>Диалог, версии и правки сохраняются в браузере и автоматически отправляются в подключённый Google Drive. Статус облачной копии показан ниже. Экспорт файла остаётся резервным способом сохранения.</p>{storageError && <p className="error-box" role="alert">{storageError}</p>}<div className="action-row"><button type="button" className="secondary-button" disabled={!hydrated} onClick={() => { try { const content = storageBlocked ? window.localStorage.getItem(WORKSPACE_STORAGE_KEY) ?? JSON.stringify(workspace) : JSON.stringify(workspace); download(content, "builder-workspace.json", "application/json"); } catch { setStorageError("Не удалось экспортировать данные браузера."); } }}>Экспортировать проект</button><label className="secondary-button import-button">Восстановить из файла<input aria-label="Восстановить проект из файла" type="file" accept="application/json,.json" disabled={loading || !hydrated} onChange={importWorkspace} /></label><button type="button" className="secondary-button" disabled={loading || !hydrated} onClick={clearWorkspace}>Очистить локальные данные</button></div></section>
+    <section className="panel storage-panel" style={auth?.authenticated && workspace.mode === "business" && businessView === "accounting" ? { display: "none" } : undefined}><h2>Сохранение проекта</h2><p>Диалог, версии и правки сохраняются в браузере и автоматически отправляются в подключённый Google Drive. Статус облачной копии показан ниже. Экспорт файла остаётся резервным способом сохранения.</p>{storageError && <p className="error-box" role="alert">{storageError}</p>}<div className="action-row"><button type="button" className="secondary-button" disabled={!hydrated} onClick={() => { try { const content = storageBlocked ? window.localStorage.getItem(WORKSPACE_STORAGE_KEY) ?? JSON.stringify(workspace) : JSON.stringify(workspace); download(content, "builder-workspace.json", "application/json"); } catch { setStorageError("Не удалось экспортировать данные браузера."); } }}>Экспортировать проект</button><label className="secondary-button import-button">Восстановить из файла<input aria-label="Восстановить проект из файла" type="file" accept="application/json,.json" disabled={requestBusy || !hydrated} onChange={importWorkspace} /></label><button type="button" className="secondary-button" disabled={requestBusy || !hydrated} onClick={clearWorkspace}>Очистить локальные данные</button></div></section>
     {auth?.authenticated && hydrated && !storageBlocked && <DriveConnection workspace={workspace} onRestore={setWorkspace} onRegister={controller => { cloud.current = controller; }} />}
     <footer className="footer">Проверяйте исходные данные, цены и технические требования перед выполнением работ. Расчёты несущих конструкций требуют проверки специалистом.</footer>
   </main>;

@@ -6,6 +6,7 @@ import { MAX_HISTORY_MESSAGE_LENGTH, MAX_HISTORY_MESSAGES, MAX_HISTORY_BYTES } f
 const sample = "## Вариант без утепления\n**Материалы:**\n| Позиция | Ед. изм. | Кол-во | Цена, руб. | Сумма, руб. | Примечание |\n| --- | --- | --- | --- | --- | --- |\n| Панель | м² | 10 | 0,10 | 9000 | Сохранить примечание |\n| Итого | | | | 9000 | |\n\n**Общая стоимость:** 9000 руб.";
 test("ordinary follow-up includes an edited selected snapshot and bounded context", () => {
   const workspace = emptyWorkspace();
+  workspace.mode = "estimate";
   workspace.messages = [{ id: "user", role: "user", content: "Первый объект" }, { id: "assistant", role: "assistant", content: sample, documentId: "original" }];
   const original = parseEstimateDocument(sample, "original");
   const snapshot = parseEstimateDocument(sample, "snapshot");

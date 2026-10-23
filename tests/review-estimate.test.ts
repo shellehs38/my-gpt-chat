@@ -75,6 +75,7 @@ test("independent review: drafts, edited documents, and failed requests survive 
 
 test("independent review: truncated context stays within API limits and active snapshot edits are included", () => {
   const state = emptyWorkspace();
+  state.mode = "facade";
   state.messages = [{ id: "u", role: "user", content: "Фасад 100 м²" }, { id: "a", role: "assistant", content: "я".repeat(MAX_HISTORY_MESSAGE_LENGTH + 100) }];
   const doc = parseEstimateDocument(variant("Вариант сохранённый"), "snapshot");
   const table = doc.blocks.find((block): block is EstimateTable => block.type === "table")!;

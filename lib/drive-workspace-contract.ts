@@ -23,5 +23,5 @@ export async function workspaceHash(workspace: Workspace): Promise<string> {
   return [...new Uint8Array(digest)].map(v => v.toString(16).padStart(2, "0")).join("");
 }
 export function hasWorkspaceContent(workspace: Workspace): boolean {
-  return Boolean(workspace.draft || workspace.messages.length || workspace.documents.length || workspace.failedRequest);
+  return Boolean(workspace.draft || workspace.messages.length || workspace.documents.length || workspace.failedRequest || Object.values(workspace.modeState ?? {}).some(state => state?.draft || state?.failedRequest));
 }

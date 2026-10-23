@@ -43,8 +43,8 @@ function isDivider(line: string): boolean {
   const cells = splitMarkdownRow(line);
   return cells.length >= 2 && cells.every((cell) => /^:?-{3,}:?$/.test(cell));
 }
-export function parseEstimateDocument(markdown: string, documentId = newId()): EstimateDocument {
-  const lines = markdown.replace(/\r\n?/g, "\n").split("\n").filter((line) => !/^\*\*Арифметический (?:итог|подытог известных позиций):/u.test(line));
+export function parseEstimateDocument(markdown: string, documentId = newId(), stripGeneratedSummary = true): EstimateDocument {
+  const lines = markdown.replace(/\r\n?/g, "\n").split("\n").filter((line) => !stripGeneratedSummary || !/^\*\*Арифметический (?:итог|подытог известных позиций):/u.test(line));
   const blocks: EstimateBlock[] = [];
   let pending: string[] = [];
   let fence = "";
@@ -173,26 +173,27 @@ export function formatEstimateProse(text: string, hasCalculation: boolean): stri
   return text.split("\n").map((line) => /^\s*(?:[-*>]\s*)?\*{0,2}(?:итог(?:о)?|всего|общий итог|общая стоимость|сумма материалов|сумма работ|стоимость (?:всех|материалов|работ))[^\n]*\d/iu.test(line)
     ? `> Пояснение исходного ответа, не пересчитанный итог: ${line.replace(/^\s*>\s*/, "")}` : line).join("\n");
 }
-export function serializeEstimateDocument(document: EstimateDocument): string {
-  const calculated = calculateEstimateDocument(document);
+/** Calculation can be disabled for contracts/advisory tables whose agreed values must remain verbatim. */
+export function serializeEstimateDocument(document: EstimateDocument, calculate = true): string {
+  const calculated = calculate ? calculateEstimateDocument(document) : undefined;
   return document.blocks.map((block) => {
     if (block.type === "markdown") {
       // A model's prose total cannot remain authoritative after table edits.
-      return formatEstimateProse(block.text, calculated.hasCalculation);
+      return formatEstimateProse(block.text, calculated?.hasCalculation ?? false);
     }
-    const table = calculated.tables.find((item) => item.tableId === block.id)!;
-    const needsSum = table.hasCalculation && table.sumIndex < 0;
+    const table = calculated?.tables.find((item) => item.tableId === block.id);
+    const needsSum = Boolean(table?.hasCalculation && table.sumIndex < 0);
     const headers = needsSum ? [...block.headers, "Сумма, руб. (расчёт)"] : block.headers;
     const lines = [`| ${headers.map(escapeCell).join(" | ")} |`, `| ${headers.map(() => "---").join(" | ")} |`];
     block.rows.forEach((row) => {
-      const values = block.headers.map((_, index) => displayedCell(row, index, table));
-      if (needsSum) {
+      const values = block.headers.map((_, index) => table ? displayedCell(row, index, table) : row.cells[index] ?? "");
+      if (needsSum && table) {
         const calculatedRow = table.rows.find((item) => item.rowId === row.id)!;
         values.push(calculatedRow.kind === "section" ? "" : calculatedRow.amountKopecks === null ? "Не рассчитано" : `${formatKopecks(calculatedRow.amountKopecks)}${calculatedRow.complete ? "" : " (известная часть; неполно)"}`);
       }
       lines.push(`| ${values.map(escapeCell).join(" | ")} |`);
     });
-    if (table.hasCalculation) lines.push("", `**Арифметический ${table.complete ? "итог" : "подытог известных позиций"}: ${formatKopecks(table.knownTotalKopecks)} руб.** ${table.complete ? "Все строки этой таблицы рассчитаны по количеству и цене; технические объёмы и цены требуют проверки." : "Полный итог не определён: заполните количество и цену всех позиций. Неизвестные значения не считаются нулём."}`);
+    if (table?.hasCalculation) lines.push("", `**Арифметический ${table.complete ? "итог" : "подытог известных позиций"}: ${formatKopecks(table.knownTotalKopecks)} руб.** ${table.complete ? "Все строки этой таблицы рассчитаны по количеству и цене; технические объёмы и цены требуют проверки." : "Полный итог не определён: заполните количество и цену всех позиций. Неизвестные значения не считаются нулём."}`);
     return lines.join("\n");
   }).join("\n\n");
 }
