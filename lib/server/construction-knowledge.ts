@@ -74,6 +74,12 @@ export function selectConstructionKnowledge(request: ChatRequest): ConstructionR
     const topic = modeTopic(request.mode) ?? (genericConstruction ? "construction-operations" : undefined);
     if (topic) scores.set(topic, 10);
   }
+  // A neutral estimate/quantity request in the facade tab still belongs to that domain;
+  // a concrete new construction subject (including an inherited one) keeps precedence.
+  if (request.mode === "facade" && !scores.has("construction-operations") &&
+      (scores.size > 0 || shortFollowUp || genericConstruction) && !scores.has("facade-systems")) scores.set("facade-systems", 20);
+  if (request.mode === "estimate" && scores.size > 0 && /посч|рассч|сколько|объ[её]м|площад|периметр|количеств/iu.test(current) &&
+      !scores.has("estimating-project-control")) scores.set("estimating-project-control", 20);
   const ranked = [...scores].sort((a, b) => b[1] - a[1] || identifiers.indexOf(a[0]) - identifiers.indexOf(b[0]));
   const selected: ConstructionReference[] = [];
   let characters = 0;

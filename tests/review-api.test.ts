@@ -140,3 +140,20 @@ test("independent review: scope and scaffolds do not regress in reversed compari
   assert.equal(ensureScaffoldRows(mixedFence), mixedFence);
   assert.equal(hasBrokenEstimateMarkdown(table), false);
 });
+
+test("document and sales replies retain their task format through the API instead of estimate serialization", async () => {
+  const clean = setup(), priorFetch = globalThis.fetch;
+  const reply = "## Документ\n| Позиция | Количество | Цена | Сумма |\n| --- | --- | --- | --- |\n| Согласованная работа | 2 | 100 | 200 |\n\nУсловия согласуются сторонами.";
+  try {
+    const token = createSessionToken(getAccessConfig()!);
+    globalThis.fetch = async () => Response.json({ status: "completed", output: [{ status: "completed", content: [{ type: "output_text", text: reply }] }] });
+    for (const value of [
+      { mode: "documents", message: "Подготовь акт выполненных работ по договору" },
+      { mode: "documents", message: "Уточни стоимость в пункте 2" },
+      { mode: "business", message: "Составь бюджет рекламы на 20000 рублей" },
+    ]) {
+      const response = await chat(request(value, token)); assert.equal(response.status, 200);
+      assert.equal((await response.json()).reply, reply);
+    }
+  } finally { globalThis.fetch = priorFetch; clean(); }
+});
