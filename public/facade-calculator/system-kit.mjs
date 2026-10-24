@@ -1,6 +1,6 @@
 import {createRow,template,number,geometry,validateSystemConfiguration,SYSTEM_STRING_FIELDS} from './engine.mjs';
 
-export function defaultSystem(){return Object.assign(Object.fromEntries(SYSTEM_STRING_FIELDS.map(k=>[k,''])),{orientation:'horizontal',reserve:'0',insulationReserve:'0',includeMembrane:false,confirmed:false,applied:false});}
+export function defaultSystem(){return Object.assign(Object.fromEntries(SYSTEM_STRING_FIELDS.map(k=>[k,''])),{orientation:'horizontal',reserve:'0',insulationReserve:'0',includeMembrane:false,includeAdhesive:false,includeCoating:true,confirmed:false,applied:false});}
 const text=v=>typeof v==='string'?v:'';
 const filled=v=>text(v).trim()!=='';
 const GRID_NOTE='Предварительная сетка по целым прямоугольным стенам, без вычета проёмов. Обрамление проёмов, стыки и усиления — по отдельной проектной раскладке. Шаги и анкеры вводятся по проекту, не назначаются калькулятором.';
@@ -29,7 +29,7 @@ function material(key,name,unit,mode,extra={}){return {...createRow(name,unit,mo
 function work(key,name,mode='area',unit='м²',extra={}){return {...createRow(name,unit,mode,'base'),kitKey:`work:${key}`,...extra};}
 
 /** Preview is side-effect free. Missing project inputs remain incomplete rows, not invented quantities. */
-export function previewSystem(state,config,variant,insulationProduct,insulationProduct2){
+function previewLegacySystem(state,config,variant,insulationProduct,insulationProduct2){
   const c=normalizedConfig(config),errors=[],notes=[],materials=[],works=[],scenario=state.scenarios[state.scenario],insulated=state.scenario==='insulated';
   try{validateSystemConfiguration(c);}catch(e){errors.push(e.message);}
   if(!variant||!filled(variant.id)||!filled(variant.name))errors.push('Выберите профиль и вариант производителя.');
@@ -91,9 +91,111 @@ export function previewSystem(state,config,variant,insulationProduct,insulationP
   return {materials,works,errors:[...new Set(errors)],notes:[...new Set(notes)]};
 }
 
+
+const METHOD_LABELS={'bracket-frame':'Каркас на кронштейнах по проекту','direct-frame':'Обрешётка с креплением к основанию','direct':'Прямое механическое крепление','bonded':'Клеевой монтаж по системе','sandwich-frame':'Крепление к несущему каркасу','seam-base':'Фальцевая облицовка по основанию'};
+const SYSTEM_LABELS={vinyl:'Виниловый сайдинг',acrylic:'Акриловый сайдинг',fibercement:'Фиброцементная облицовка',wood:'Деревянная облицовка',plinth:'Фасадные / цокольные панели',thermal:'Термопанели',wpc:'Облицовка ДПК',acp:'Алюминиевые композитные панели',hpl:'HPL-панели',sandwich:'Сэндвич-панели','stone-lock':'Замковые панели под камень',cassettes:'Фасадные кассеты',profiled:'Профилированный лист',seam:'Фальцевая облицовка'};
+const EXTRA_FIELDS=['directFastenersPerM2','directFastenerSource','clipsPerM2','clipSource','adhesiveNorm','adhesiveSource','groutNorm','groutSource','primerNorm','primerSource','coatingNorm','coatingLayers','coatingSource','sealantNorm','sealantSource','substrateNorm','substrateSource','subsystemNorm','subsystemSource','jointStripNorm','jointStripSource'];
+/** Describes only fields applicable to this product and mounting method. Missing metadata retains the legacy metal kit. */
+export function getSystemSchema(variant,config={}){
+  const legacy=!variant?.systemKind,kind=variant?.systemKind||'linear',systemId=variant?.systemId||config.systemId||'',requiresType=kind==='unknown'||variant?.requiresType===true;
+  let methods=[];
+  if(!requiresType){
+    if(legacy)methods=['bracket-frame'];
+    else if(kind==='sandwich')methods=['sandwich-frame'];
+    else if(kind==='seam')methods=['seam-base'];
+    else for(const method of variant?.mountingMethods?.length?variant.mountingMethods:['frame']){
+      if(method==='frame')methods.push(...(variant?.frameMethods?.length?variant.frameMethods:['vinyl','acrylic','plinth','wood','wpc'].includes(systemId)||kind==='wood'?['direct-frame','bracket-frame']:['bracket-frame','direct-frame']));
+      else if(method==='direct'||method==='bonded')methods.push(method);
+    }
+  }
+  methods=[...new Set(methods)];const defaultMethod=methods[0]||'',method=config.mountingMethod||defaultMethod;
+  const integratedInsulation=variant?.integratedInsulation===true||kind==='thermal'||kind==='sandwich';
+  const frame=['bracket-frame','direct-frame'].includes(method),grid=frame&&variant?.grid!==false,externalInsulation=frame&&!integratedInsulation;
+  const fields=['orientation','panelLength','usefulWidth','fullWidth','reserve','source'];
+  const notes=[];if(requiresType)notes.push('Сначала выберите конкретный материал и конструкцию: декоративное название не определяет технологию.');
+  if(frame){fields.push(...(grid?['railPitch']:['subsystemNorm','subsystemSource']));if(method==='bracket-frame'&&grid)fields.push('bracketPitch','anchorsPerBracket');if(method==='direct-frame')fields.push('directFastenersPerM2','directFastenerSource');}
+  if(kind==='sandwich')fields.push('subsystemNorm','subsystemSource','fixingsPerM2','fastenerSource','sealantNorm','sealantSource','jointStripNorm','jointStripSource');
+  else if(kind==='seam'){fields.push('baseType','substrateNorm','substrateSource');fields.push(...(variant?.fastenerType==='clips'?['clipsPerM2','clipSource']:['fixingsPerM2','fastenerSource']));}
+  else if(method==='direct'||method==='bonded')fields.push('directFastenersPerM2','directFastenerSource');
+  else fields.push(...(variant?.fastenerType==='clips'?['clipsPerM2','clipSource']:['fixingsPerM2','fastenerSource']));
+  if(method==='bonded'||variant?.adhesiveRequired||(kind==='thermal'&&config.includeAdhesive))fields.push('adhesiveNorm','adhesiveSource');
+  if(method==='bonded')fields.push('primerNorm','primerSource');
+  if(variant?.needsJointGrout)fields.push('groutNorm','groutSource');
+  if(variant?.needsJointSealant)fields.push('sealantNorm','sealantSource');
+  const coating=variant?.needsCoating===true||(kind==='wood'&&variant?.needsCoating!==false&&config.includeCoating!==false);if(coating)fields.push('coatingNorm','coatingLayers','coatingSource');else if(kind==='wood')fields.push('coatingSource');
+  if(integratedInsulation){fields.push('panelCoreThickness');notes.push('Утепляющий сердечник входит в панель и учитывается один раз в её цене. Отдельные слои ваты и мембрана автоматически не добавляются.');}
+  if(!grid&&frame)notes.push('Подсистема зависит от стыков и раскладки панелей: расход направляющих и креплений задаётся по проектной спецификации, без типовой сетки стен.');
+  if(kind==='sandwich')notes.push('Несущий каркас, пролёты, крепления и стыки сэндвич-панелей проверяются по проекту; кронштейны навесного фасада не подставляются.');
+  if(kind==='seam')notes.push('Тип основания и крепления фальца выбираются по инструкции конкретной панели; клик-панель с крепёжной полкой не заменяется кляммерами.');
+  return {kind,systemId,legacy,title:legacy?'Вентилируемый фасад на металлической подсистеме':SYSTEM_LABELS[systemId]||variant?.name||'Выбранная фасадная система',methodOptions:methods.map(id=>({id,label:METHOD_LABELS[id]})),defaultMethod,method,mountingMethod:method,fieldKeys:[...new Set(fields)],notes,integratedInsulation,requiresType,grid,externalInsulation,supportsMembrane:externalInsulation,baseOptions:(variant?.baseOptions||['battens','solid']).map(id=>({id,label:id==='solid'?'Сплошное основание':'Обрешётка по проекту'})),coating};
+}
+export function previewSystem(state,config,variant,insulationProduct,insulationProduct2){
+  if(!variant?.systemKind)return previewLegacySystem(state,config,variant,insulationProduct,insulationProduct2);
+  return previewTypedSystem(state,config,variant,insulationProduct,insulationProduct2);
+}
+// Ignore stale values hidden by a different technology; never carry them into its saved applied kit.
+function applicableConfig(config,schema,insulated){
+  const c={...config};
+  for(const key of ['railPitch','bracketPitch','anchorsPerBracket','fixingsPerM2','fastenerSource',...EXTRA_FIELDS])if(!schema.fieldKeys.includes(key))c[key]='';
+  if(!schema.externalInsulation||!insulated)for(const key of ['layer1','layer2','insulationId','insulationId2','insulationCompatibilitySource','insulationReserve','insulationPack','insulationPack1','insulationPack2','insulationFixingsPerM2','insulationFixingSource'])c[key]='';
+  if(!schema.supportsMembrane||!insulated){c.includeMembrane=false;c.membraneOverlap='';c.membranePack='';}
+  if(!schema.integratedInsulation)c.panelCoreThickness='';
+  if(schema.kind!=='thermal')c.includeAdhesive=false;
+  return c;
+}
+function previewTypedSystem(state,config,variant,insulationProduct,insulationProduct2){
+  const raw=normalizedConfig(config),schema=getSystemSchema(variant,raw),insulated=state.scenario==='insulated',method=schema.method;
+  if(schema.requiresType)return {materials:[],works:[],errors:['Выберите конкретную технологию материала вместо неопределённого типа «под камень» / «фасадные панели».'],notes:schema.notes};
+  const c=applicableConfig(raw,schema,insulated);
+  const base=previewLegacySystem(state,c,variant,schema.externalInsulation&&insulated?insulationProduct:undefined,schema.externalInsulation&&insulated?insulationProduct2:undefined);
+  const errors=[...base.errors],notes=[...schema.notes],materials=[],works=[];
+  if(!schema.methodOptions.some(x=>x.id===method)&&!schema.requiresType)errors.push('Выбранный способ монтажа не подтверждён для этого материала.');
+  if(schema.integratedInsulation&&!insulated)errors.push('У этой панели уже есть утепляющий сердечник. Переключите вариант на «С утеплением», чтобы не выдавать панель за вариант без утепления.');
+  for(const key of schema.fieldKeys.filter(x=>EXTRA_FIELDS.includes(x)&&!x.endsWith('Source')))if(filled(c[key])&&number(c[key])===null)errors.push('Расход материала должен быть неотрицательным числом; источник и единицы берутся из документации системы.');
+  if(schema.coating&&filled(c.coatingLayers)&&(!(number(c.coatingLayers)>0)||!Number.isInteger(number(c.coatingLayers))))errors.push('Число слоёв защитного покрытия должно быть целым и больше нуля.');
+  if(schema.integratedInsulation&&!(number(c.panelCoreThickness)>0))errors.push('Укажите толщину встроенного утепляющего сердечника в миллиметрах больше нуля: она определяет выбранную панель.');
+  if(schema.integratedInsulation&&number(c.panelCoreThickness)>0&&variant.coreThicknessOptions?.length&&!variant.coreThicknessOptions.some(x=>number(x)===number(c.panelCoreThickness)))errors.push('Эта толщина сердечника отсутствует в подтверждённом перечне выбранной панели. Выберите заводской вариант из карточки производителя.');
+  if(schema.kind==='seam'&&filled(c.baseType)&&!schema.baseOptions.some(x=>x.id===c.baseType))errors.push('Выбранный тип основания не подтверждён для этой фальцевой облицовки.');
+  if(schema.kind==='seam'&&(!c.baseType||!schema.baseOptions.some(x=>x.id===c.baseType)))notes.push('Выберите тип основания фальцевой облицовки по проекту; расход основания пока не определён.');
+  const keepMaterial=r=>r.kitKey.startsWith('trim:')||(schema.externalInsulation&&r.kitKey.startsWith('insulation:'))||(schema.supportsMembrane&&r.kitKey.startsWith('membrane:'));
+  const keepWork=r=>r.kitKey==='work:preparation'||r.kitKey.startsWith('work:trim:')||(schema.externalInsulation&&r.kitKey.startsWith('work:insulation'))||(schema.supportsMembrane&&r.kitKey.startsWith('work:membrane'));
+  materials.push(...base.materials.filter(keepMaterial));works.push(...base.works.filter(keepWork));
+  const panels=base.materials.find(r=>r.kitKey==='siding:panels');if(panels){if(schema.integratedInsulation)panels.techNote+=' Утепляющий сердечник включён в панель; отдельно не добавлен.';materials.unshift(panels);}
+  const normRow=(key,name,unit,norm,source,extra={})=>materials.push(material(key,name,unit,'norm',{norm:text(norm),normSource:text(source),requiresNormSource:true,...extra}));
+  const addFixings=()=>{if(variant.fastenerType==='clips')normRow('mount:clips',variant.fastenerLabel||'Клипсы выбранной системы','шт.',c.clipsPerM2,c.clipSource);else normRow('siding:fasteners',variant.fastenerLabel||'Крепёж облицовки по проекту','шт.',c.fixingsPerM2,c.fastenerSource);};
+  if(['bracket-frame','direct-frame'].includes(method)){
+    if(schema.grid){const grid={orientation:c.orientation,railPitch:c.railPitch,bracketPitch:c.bracketPitch,anchorsPerBracket:c.anchorsPerBracket,normSource:c.source,techNote:GRID_NOTE};materials.push(material('subsystem:rails',method==='direct-frame'?'Обрешётка — предварительная сетка':'Направляющие подсистемы — предварительная сетка','м.п.','supportLength',grid));if(method==='bracket-frame')materials.push(material('subsystem:brackets','Кронштейны по проекту','шт.','supportBrackets',grid),material('subsystem:anchors','Анкеры кронштейнов по проекту','шт.','supportAnchors',grid));}
+    else{normRow('subsystem:rails','Направляющие — расход по раскладке панелей','м.п.',c.subsystemNorm,c.subsystemSource);if(method==='bracket-frame')materials.push(material('subsystem:brackets','Кронштейны — количество по проекту','шт.','manual'),material('subsystem:anchors','Анкеры кронштейнов — количество по проекту','шт.','manual'));}
+    if(method==='direct-frame')normRow('mount:base-fixings','Крепёж обрешётки к основанию','шт.',c.directFastenersPerM2,c.directFastenerSource);
+    works.push(work('subsystem',method==='direct-frame'?'Монтаж обрешётки':'Монтаж проектной подсистемы'));addFixings();
+  }else if(method==='direct'||method==='bonded'){
+    normRow('mount:direct-fixings','Механический крепёж панели к основанию','шт.',c.directFastenersPerM2,c.directFastenerSource);
+  }else if(method==='sandwich-frame'){
+    normRow('subsystem:structure','Элементы несущего каркаса — спецификация проекта','м.п.',c.subsystemNorm,c.subsystemSource,{techNote:'Это отдельный несущий каркас. Пролёты и несущая способность не рассчитываются калькулятором.'});addFixings();
+    normRow('sandwich:sealant',variant.sealantLabel||'Герметизация стыков сэндвич-панелей',variant.sealantUnit||'кг',c.sealantNorm,c.sealantSource);
+    normRow('sandwich:joint-strips','Нащельники стыков — по проектной норме','м.п.',c.jointStripNorm,c.jointStripSource);
+    works.push(work('structure','Монтаж несущего каркаса — по проекту'),work('sandwich-sealing','Герметизация стыков панелей'));
+  }else if(method==='seam-base'){
+    const validBase=schema.baseOptions.some(x=>x.id===c.baseType);normRow('seam:base',c.baseType==='solid'?'Сплошное основание фальцевой облицовки':'Обрешётка фальцевой облицовки',c.baseType==='solid'?'м²':'м.п.',validBase?c.substrateNorm:'',c.substrateSource,{techNote:'Расход и крепление основания принимаются по проекту выбранного фальца; тип основания должен быть выбран явно.'});addFixings();works.push(work('seam-base','Устройство основания фальцевой облицовки'));
+  }
+  if(method==='bonded'||variant.adhesiveRequired||(schema.kind==='thermal'&&c.includeAdhesive)){normRow('surface:adhesive','Клей выбранной системы',variant.adhesiveUnit||'кг',c.adhesiveNorm,c.adhesiveSource);works.push(work('adhesive','Нанесение клея по технологии системы'));}
+  if(method==='bonded'){normRow('surface:primer','Грунт основания по системе',variant.primerUnit||'л',c.primerNorm,c.primerSource);works.push(work('primer','Грунтование основания'));}
+  if(variant.needsJointGrout){normRow('surface:grout',variant.groutLabel||'Затирка швов выбранной облицовки',variant.groutUnit||'кг',c.groutNorm,c.groutSource);works.push(work('grout',variant.groutLabel||'Расшивка / заполнение швов облицовки'));}
+  if(variant.needsJointSealant&&schema.kind!=='sandwich'){normRow('surface:sealant',variant.sealantLabel||'Эластичная заделка монтажных швов',variant.sealantUnit||'кг',c.sealantNorm,c.sealantSource);works.push(work('joint-sealant',variant.sealantLabel||'Эластичная заделка монтажных швов'));}
+  if(schema.coating){normRow('surface:coating',variant.coatingLabel||'Защитное покрытие облицовки',variant.coatingUnit||'л',c.coatingNorm,c.coatingSource,{normFactor:c.coatingLayers,requiresNormFactor:true,techNote:'Расход на один слой × число слоёв; покрытие не считается автоматически включённым в стоимость необработанной облицовки.'});works.push(work('coating','Нанесение защитного покрытия','norm','м²',{norm:c.coatingLayers,normSource:c.coatingSource,requiresNormSource:true}));}
+  if(variant.needsFabrication)works.push(work('fabrication',schema.systemId==='acp'?'Раскрой, фрезеровка и гибка кассет АКП по раскладке':'Подготовка и обработка панелей по раскладке','area','м²',{techNote:'Отдельная операция изготовления; объём предварительно по чистой площади до ведомости раскроя, цена не назначена.'}));
+  works.push(work('siding',schema.kind==='sandwich'?'Монтаж сэндвич-панелей':schema.kind==='seam'?'Монтаж фальцевой облицовки':`Монтаж облицовки · ${variant.name}`));
+  const identity=[variant.id,method,schema.kind==='seam'?c.baseType:'',schema.integratedInsulation?c.panelCoreThickness:''].join('|');for(const r of [...materials,...works])r.kitIdentity=[r.kitIdentity||'',identity].join('|');
+  if(schema.kind==='wood'&&!schema.coating)notes.push(filled(c.coatingSource)?`Дополнительное покрытие древесины не добавлено: ${c.coatingSource}`:'Дополнительное покрытие древесины отключено. Укажите заводскую отделку или основание, почему оно не требуется, по документации выбранной древесины.');
+  if(!c.confirmed)notes.push('Состав, основание, крепления и совместимость всей системы подтверждаются проектом и инструкцией производителя.');
+  notes.push('Количество панелей предварительно рассчитывается по полезному модулю до раскладки и раскроя. Расходы, цены и проектные шаги без исходных данных остаются пустыми.');
+  if(geometry(state).area===null)notes.push('Заполните геометрию объекта для автоматического пересчёта количеств.');
+  return {materials,works,errors:[...new Set(errors)],notes:[...new Set(notes)]};
+}
+
 /** Explicitly applies a reviewed kit to a cloned project; never changes another scenario. */
 export function applySystem(state,config,variant,insulationProduct,insulationProduct2){
-  const c=normalizedConfig(config),preview=previewSystem(state,c,variant,insulationProduct,insulationProduct2);
+  const normalized=normalizedConfig(config),schema=getSystemSchema(variant,normalized),c=variant?.systemKind?applicableConfig(normalized,schema,state.scenario==='insulated'):normalized,preview=previewSystem(state,c,variant,insulationProduct,insulationProduct2);
   if(preview.errors.length)throw Error(preview.errors.join(' '));
   const result=JSON.parse(JSON.stringify(state)),insulated=result.scenario==='insulated',scenario=result.scenarios[result.scenario],disposition=templateDisposition(scenario,result.scenario==='insulated');
   for(const key of ['materials','works']){
@@ -115,9 +217,10 @@ export function applySystem(state,config,variant,insulationProduct,insulationPro
     });
     scenario[key]=[...scenario[key].filter(r=>!filled(r.kitKey)&&!disposition.remove.has(r.id)),...rows];
   }
-  scenario.system={...c,variantId:c.variantId||variant.id,insulationId:insulated?(c.insulationId||insulationProduct?.id||''):'',insulationId2:insulated&&filled(c.layer2)?(c.insulationId2||insulationProduct2?.id||insulationProduct?.id||''):'',includeMembrane:insulated&&c.includeMembrane,usefulWidth:c.usefulWidth||text(variant.usefulWidth),fullWidth:c.fullWidth||text(variant.fullWidth),applied:true,variant:snapshot(variant),...(insulated&&insulationProduct?{insulationSelection:snapshot(insulationProduct)}:{}),...(insulated&&filled(c.layer2)&&(insulationProduct2??insulationProduct)?{insulationSelection2:snapshot(insulationProduct2??insulationProduct)}:{})};
+  scenario.system={...c,mountingMethod:schema.method,systemId:schema.systemId,variantId:c.variantId||variant.id,insulationId:insulated&&schema.externalInsulation?(c.insulationId||insulationProduct?.id||''):'',insulationId2:insulated&&schema.externalInsulation&&filled(c.layer2)?(c.insulationId2||insulationProduct2?.id||insulationProduct?.id||''):'',includeMembrane:insulated&&schema.supportsMembrane&&c.includeMembrane,usefulWidth:c.usefulWidth||text(variant.usefulWidth),fullWidth:c.fullWidth||text(variant.fullWidth),applied:true,variant:snapshot(variant),...(insulated&&schema.externalInsulation&&insulationProduct?{insulationSelection:snapshot(insulationProduct)}:{}),...(insulated&&schema.externalInsulation&&filled(c.layer2)&&(insulationProduct2??insulationProduct)?{insulationSelection2:snapshot(insulationProduct2??insulationProduct)}:{})};
   result.cladding=`${variant.manufacturer} · ${variant.name}`;
-  if(result.scenario==='insulated'){
+  if(result.scenario==='insulated'&&schema.integratedInsulation){result.insulationType='Утепляющий сердечник включён в панель';result.thickness=c.panelCoreThickness||text(variant.panelCoreThickness);}
+  else if(result.scenario==='insulated'&&schema.externalInsulation){
     result.insulationType=[insulationProduct,...(filled(c.layer2)&&insulationProduct2&&insulationProduct2.id!==insulationProduct?.id?[insulationProduct2]:[])].filter(Boolean).map(p=>`${p.manufacturer} · ${p.name}`).join(' / ');
     const total=sumDecimals(c.layer1,c.layer2);result.thickness=total==='0'?'':total;
   }
