@@ -24,7 +24,7 @@ API защищены входом владельца, подписанной Htt
 
 ## GOOGLE DRIVE CONNECTION STAGE
 
-Drive: drive-connect.ts хранит OAuth на сервере (openid + drive.file, стабильный owner). drive-workspace.ts сохраняет неизменяемые JSON-версии workspace: диалог, черновик, сметы и правки. DriveAutosave ведёт durable outbox до upload, повторяет выделенный ID и восстанавливает проект; saved требует проверки папки, размера, SHA-256 и чтения. Ветки сохраняются до явного выбора. Local clear ставит паузу, не удаляет облако. OAuth только по нажатию при необходимости. JSON-экспорт и Sheets сохраняются; фото и отдельный калькулятор ещё не интегрированы.
+OAuth на сервере: openid + drive.file, стабильный owner, вход по нажатию при необходимости. DriveAutosave сохраняет неизменяемые JSON-версии workspace, durable outbox и ID повтора; saved требует проверки папки, размера, SHA-256 и чтения. Ветки — до явного выбора. Local clear ставит паузу, не удаляет облако. JSON и Sheets сохраняются. Фото не интегрированы. public/facade-calculator доступен из вкладок смет/фасадов; его проекты хранятся отдельно от диалога и Drive.
 
 ## DEVELOPMENT MEMORY
 
@@ -37,3 +37,7 @@ Production-сборка индексирует Codebase Memory и ADR, scripts/e
 ## CONSTRUCTION KNOWLEDGE
 
 База: plugin-source/svoi-lyudi-builder/skills/construction-assistant/references; фасады, технологии, сметы, качество, безопасность и логистика. Обязательные требования и утверждённый проект выполняются совместно; конфликт передаётся проектировщику. Используются техкарта конкретного продукта, подтверждённые данные, затем отмеченное допущение. Не переносить нормы, крепёж, допуски и выдержки между продуктами; не выдавать расчёт/фото за обследование, проект или приёмку. Неизвестные цены и количества пустые; ноль — подтверждённое отсутствие стоимости. Учёт по ID, денежный остаток не прибыль. Нормативный вывод требует проверки действующего первоисточника.
+
+## FACADE MATERIAL CATALOG
+
+Каталог: public/facade-calculator/material-catalog.mjs (10 профилей, 6 утеплителей). Runtime: lib/server/facade-catalog.ts. При вопросе прочитай карточку: https://my-gpt-chat-theta.vercel.app/facade-calculator/catalog.json. Инструкции: тот же путь materials-guide.md. Чат не вызывает движок, не выдумывает нормы/цены. Перенос JSON: docs/FACADE_CALCULATOR.md.
