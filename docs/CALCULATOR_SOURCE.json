@@ -83,8 +83,8 @@
       "files": [
         {
           "path": "public/facade-calculator/app.mjs",
-          "sha256": "2053ed234bfc499b248d1adbe64dcb377b25e8d98c2bd29ba65d08399db76e3c",
-          "bytes": 70907
+          "sha256": "3d3eef9258122653192041aafebd7eccdf7daced3164cfd75f1db1a13ac522fc",
+          "bytes": 71083
         },
         {
           "path": "public/facade-calculator/brand/logo-sl-approved-light.png",

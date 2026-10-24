@@ -46,7 +46,11 @@ function save(){
 async function flushSave(force=false){
   clearTimeout(saveTimer);if(inFlight)await inFlight;
   if(!storageReady||conflict||(!dirty&&!force))return !dirty;
-  const json=JSON.stringify(state);if(json===lastSaved&&!force){dirty=false;return true;}
+  const json=JSON.stringify(state);if(json===lastSaved&&!force){
+    dirty=false;try{localStorage.removeItem(recoveryKey);}catch{}
+    $('#save-status').textContent='Объект и версия сохранены в этом браузере';
+    return true;
+  }
   const versionSerial=serial,snapshot=JSON.parse(json),origin=projectId,baseRevision=revisionId;
   const operation=(async()=>{try{
     const saved=await store.saveProject({projectId:origin,baseRevision,state:snapshot});
