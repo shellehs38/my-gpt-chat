@@ -4,7 +4,7 @@ import {createProjectStore} from './project-store.mjs';
 import {parseTakeoff} from './takeoff.mjs';
 import {decodeProjectLink} from './project-link.mjs';
 import {createCatalogUI} from './catalog-ui.mjs';
-import {syncOpeningRows} from './system-kit.mjs';
+import {syncOpeningRows,getSystemSchema} from './system-kit.mjs';
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt=(n,max=2)=>n==null||!Number.isFinite(n)?'—':new Intl.NumberFormat('ru-RU',{maximumFractionDigits:max}).format(n);
@@ -166,8 +166,18 @@ function compactMissing(c,geo){
 function update(){
   const c=calculate(state),geo=c.geo,m=measurements(state),ready=finalReady(c);
   const activeSystem=state.scenarios[state.scenario].system;
+  const activeSchema=activeSystem?.applied?getSystemSchema(activeSystem.variant||activeSystem.selection,activeSystem):null;
+  $('#active-system-title').textContent=activeSchema?.title||'Фасадная система и вариант утепления';
+  $('#bracket-outreach-field').hidden=!!activeSchema&&activeSchema.method!=='bracket-frame';
   for(const key of ['cladding','insulationType','thickness'])$(`[data-bind=${key}]`).readOnly=!!activeSystem?.applied;
-  if(activeSystem?.applied){const v=activeSystem.variant||activeSystem.selection;if(v)$('[data-bind=cladding]').value=`${v.manufacturer} · ${v.name}`;const ins=[activeSystem.insulationSelection,...(activeSystem.layer2?[activeSystem.insulationSelection2]:[])].filter(Boolean);$('[data-bind=insulationType]').value=ins.map(x=>`${x.manufacturer} · ${x.name}`).join(' / ');const layers=c.sections.materials.rows.filter(r=>r.enabled&&r.mode==='insulationVolume'&&r.kitKey?.startsWith('insulation:layer'));$('[data-bind=thickness]').value=layers.length&&layers.every(r=>number(r.thickness)>0)?fmt(layers.reduce((sum,r)=>sum+number(r.thickness),0),12):'';}
+  if(activeSystem?.applied){
+    const v=activeSystem.variant||activeSystem.selection,schema=getSystemSchema(v,activeSystem);
+    if(v)$('[data-bind=cladding]').value=`${v.manufacturer} · ${v.name}`;
+    const ins=[activeSystem.insulationSelection,...(activeSystem.layer2?[activeSystem.insulationSelection2]:[])].filter(Boolean);
+    $('[data-bind=insulationType]').value=schema.integratedInsulation?`Встроенный слой панели${v?.coreType?' · '+({'mineral-wool':'минеральная вата',pir:'PIR'}[v.coreType]||v.coreType):''}`:ins.map(x=>`${x.manufacturer} · ${x.name}`).join(' / ');
+    const layers=c.sections.materials.rows.filter(r=>r.enabled&&r.mode==='insulationVolume'&&r.kitKey?.startsWith('insulation:layer'));
+    $('[data-bind=thickness]').value=schema.integratedInsulation?activeSystem.panelCoreThickness||'':layers.length&&layers.every(r=>number(r.thickness)>0)?fmt(layers.reduce((sum,r)=>sum+number(r.thickness),0),12):'';
+  }
 
   $('#geometry-equation').hidden=state.areaMode==='direct';
   $('#gross-area').textContent=`${fmt(geo.gross,4)} м²`;$('#openings-area').textContent=`${fmt(geo.openings,4)} м²`;$('#net-area').textContent=`${fmt(geo.area,4)} м²`;
@@ -277,6 +287,7 @@ window.addEventListener('beforeprint',printReport);
 $('#print-project').addEventListener('click',()=>{$('.file-menu').open=false;printReport();window.print();});
 $$('.step-nav a').forEach(a=>a.addEventListener('click',()=>{$$('.step-nav a').forEach(x=>x.classList.toggle('active',x===a));}));
 catalogUI=createCatalogUI({element:$('#system-catalog'),getState:()=>state,onNotice:toast,
+  onScenario:scenario=>{state.scenario=scenario;syncOpeningRows(state);render();save();},
   onApply:next=>{state=next;tab='materials';render();save();},
   onCreate:async next=>{if(!await beforeSwitch())throw Error('Переход отменён. Сначала сохраните текущий проект.');if(storageReady)useProject(await store.createProject(next));else{state=next;tab='materials';render();save();}}
 });

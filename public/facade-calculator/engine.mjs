@@ -162,7 +162,7 @@ export function measurements(state) {
 export function quantity(item,area,measures,state) {
   if(supportModes.includes(item.mode))return state?numeric(supportRatio(item,state,geometry(state)).amount):null;
   if(item.mode==='area')return area;
-  if(item.mode==='norm')return area!==null&&number(item.norm)!==null?area*number(item.norm):null;
+  if(item.mode==='norm'){const factor=item.requiresNormFactor||filled(item.normFactor)?number(item.normFactor):1;return area!==null&&number(item.norm)!==null&&factor>0?area*number(item.norm)*factor:null;}
   if(measureKeys.includes(item.mode))return measures?.[item.mode]??null;
   if(item.mode==='insulationVolume')return area!==null&&number(item.thickness)>0?area*number(item.thickness)/1000:null;
   if(item.mode==='panels')return area!==null&&number(item.coverWidth)>0&&number(item.coverHeight)>0?area/(number(item.coverWidth)*number(item.coverHeight)):null;
@@ -210,6 +210,7 @@ function quantityRatio(item,geo,measures,state) {
   } else if(item.mode==='panels') {
     const width=decimal(item.coverWidth),height=decimal(item.coverHeight);if(!geo.areaRatio)errors.push('сначала площадь фасада');if(!width||width.n===0n||!height||height.n===0n)errors.push('полезная ширина и высота панели в метрах больше нуля');if(geo.areaRatio&&width?.n>0n&&height?.n>0n)amount=div(geo.areaRatio,mul(width,height));
   } else errors.push('способ расчёта количества');
+  if(item.mode==='norm'&&(item.requiresNormFactor||filled(item.normFactor))){const factor=decimal(item.normFactor);if(!factor||factor.n===0n)errors.push('число слоёв покрытия больше нуля');else if(amount)amount=mul(amount,factor);}
   if(item.requiresNormSource&&!item.normSource?.trim())errors.push('источник нормы / проектного параметра');
   return {amount,errors};
 }
@@ -303,7 +304,7 @@ export function calculate(state,scenarioKey=state.scenario) {
   const value=list=>{const v=sumCents(list);return v===null?null:v/100;};
   return {scenario:scenarioKey,geo,measurements:measures,sections,active,complete,missing,sourcesMissing,total,tax:taxCalculation(state,total===null?null:totalCents),overflow:!safe,ready,confirmed:ready&&!sourcesMissing.length,pricing:{base:value(base),allowance:value(allowance),clientLabor:value(labor),external:value(external)}};
 }
-const rowInputFields=['quantity','norm','price','reserve','pack','stock','ordered','thickness','coverWidth','coverHeight','normSource','source','priceDate','railPitch','bracketPitch','anchorsPerBracket','kitKey','kitIdentity','techNote'];
+const rowInputFields=['quantity','norm','price','reserve','pack','stock','ordered','thickness','coverWidth','coverHeight','normSource','source','priceDate','railPitch','bracketPitch','anchorsPerBracket','kitKey','kitIdentity','techNote','normFactor'];
 export function copyCommonRows(state) {
   const from=state.scenario,to=from==='insulated'?'bare':'insulated';let copied=0,skipped=0;
   for(const key of ['materials','works'])for(const source of state.scenarios[from][key]) {
@@ -321,8 +322,9 @@ export function csv(state) {
   const insulationRows=c.sections.materials.rows.filter(r=>r.enabled&&r.mode==='insulationVolume'&&/^insulation:layer[12]$/.test(r.kitKey||''));
   const exactThickness=insulationRows.length&&insulationRows.every(r=>decimal(r.thickness)?.n>0n)?numeric(insulationRows.reduce((sum,r)=>add(sum,decimal(r.thickness)),zero())):'';
   const cladding=system?.applied?label(system.variant||system.selection):state.cladding;
-  const insulationName=system?.applied?insulationRows.map(r=>label(r.kitKey==='insulation:layer2'?(system.insulationSelection2||system.insulationSelection):system.insulationSelection)).filter(Boolean).join(' / '):state.insulationType;
-  const thickness=system?.applied?exactThickness:state.thickness;
+  const integratedCore=system?.applied&&(system.variant?.integratedInsulation||['thermal','sandwich'].includes(system.variant?.systemKind));
+  const insulationName=integratedCore?'Утепляющий сердечник включён в панель; отдельно не добавлен':system?.applied?insulationRows.map(r=>label(r.kitKey==='insulation:layer2'?(system.insulationSelection2||system.insulationSelection):system.insulationSelection)).filter(Boolean).join(' / '):state.insulationType;
+  const thickness=integratedCore?(system.panelCoreThickness||system.variant?.panelCoreThickness||''):system?.applied?exactThickness:state.thickness;
   const layerThickness=layer=>c.sections.materials.rows.find(r=>r.enabled&&r.kitKey===`insulation:layer${layer}`&&r.mode==='insulationVolume')?.thickness??'';
   const taxLabels={unknown:'Не указан',none:'Без НДС',included:'НДС включён',onTop:'НДС сверху'};
   const rows=[['ООО «СВОИ ЛЮДИ» · Иркутск — ВНУТРЕННИЙ РАСЧЁТ'],['Объект',state.project],['Адрес',state.address],['Вариант',state.scenario==='insulated'?'С утеплением':'Без утепления'],['Статус',!c.ready?'НЕПОЛНЫЙ РАСЧЁТ':c.confirmed?'Заполнено по введённым данным':'ПРЕДВАРИТЕЛЬНО — УТОЧНИТЕ ИСТОЧНИКИ ЦЕН'],['Чистая площадь, м²',c.geo.area??''],['Основание',state.substrate],['Облицовка',cladding],['Длина здания, м',state.buildingLength],['Ширина здания, м',state.buildingWidth],['Высота здания, м',state.buildingHeight],['Общая толщина утепления, мм',state.scenario==='insulated'?thickness:'Не применяется'],['Тип утеплителя',state.scenario==='insulated'?insulationName:'Не применяется'],['Подсистема',state.subsystem],['Вылет кронштейна',state.bracketOutreach],['Проект / спецификация',state.projectRef],['Условия цены',state.terms],['Режим НДС',taxLabels[c.tax.mode]],['Ставка НДС, %',state.taxRate],[]];
@@ -334,11 +336,14 @@ export function csv(state) {
       for(const line of card.limitations??[])rows.push(['Ограничение применения',line]);
       for(const ref of card.sources??[])rows.push(['Источник документации',ref.title,ref.url,ref.checked??'',ref.pages??'']);
     }
-    rows.push(['Ограничение расчёта','Панели предварительно по площади до раскроя; сетка подсистемы по целым прямоугольным стенам без вычета проёмов. Обрамление проёмов, стыки и усиления проверяются по проектной раскладке.']);
+    for(const key of ['systemId','mountingMethod','baseType','panelCoreThickness','directFastenersPerM2','directFastenerSource','clipsPerM2','clipSource','adhesiveNorm','adhesiveSource','groutNorm','groutSource','primerNorm','primerSource','coatingNorm','coatingLayers','coatingSource','sealantNorm','sealantSource','substrateNorm','substrateSource','subsystemNorm','subsystemSource','jointStripNorm','jointStripSource'])if(filled(system[key]))rows.push(['Параметр выбранной системы',key,system[key]]);
+    if(system.variant?.integratedInsulation||['thermal','sandwich'].includes(system.variant?.systemKind))rows.push(['Утепляющий сердечник','Включён в панели один раз. Отдельная вата и мембрана автоматически не добавлены.']);
+    const hasGrid=c.sections.materials.rows.some(row=>supportModes.includes(row.mode));
+    rows.push(['Ограничение расчёта',hasGrid?'Панели предварительно по площади до раскроя; сетка подсистемы по целым прямоугольным стенам без вычета проёмов. Обрамление проёмов, стыки и усиления проверяются по проектной раскладке.':'Панели предварительно по полезному модулю до раскладки и раскроя. Каркас, основание, стыки и крепления — по документации выбранной системы и проектной спецификации; типовая сетка кронштейнов не подставлена.']);
   }
   for(const [key,title] of [['materials','МАТЕРИАЛЫ'],['works','РАБОТЫ']]) {
-    rows.push([title],['Наименование','Ед.','Способ количества','Расход на м²','Источник нормы','Толщина слоя, мм','Полезная ширина панели, м','Полезная высота панели, м','Чистое количество','Запас, %','Потребность с запасом','Пригодный выделенный остаток','Подтверждённый выделенный заказ','Покрыто остатком / заказом','Не покрыто до упаковок','Размер упаковки','Упаковок','Новая закупка','База стоимости','Количество к расчёту','Исходная ставка, ₽','Тип ставки','Клиентская ставка, ₽','Сумма клиенту, ₽','Стоимость новой закупки, ₽','Источник цены','Дата цены','Что заполнить','Направление облицовки','Шаг направляющих, м','Шаг кронштейнов, м','Анкеров на кронштейн','Примечание технологии']);
-    for(const r of c.sections[key].rows.filter(x=>x.enabled))rows.push([r.name,r.unit,MODE_LABELS[r.mode],r.mode==='norm'?r.norm:'',r.normSource,r.mode==='insulationVolume'?r.thickness:'',r.mode==='panels'?r.coverWidth:'',r.mode==='panels'?r.coverHeight:'',r.netQty??'',key==='materials'?r.reserve:'',r.demandQty??'',key==='materials'?r.stock:'',key==='materials'?r.ordered:'',key==='materials'?r.coveredQty??'':'',key==='materials'?r.neededQty??'':'',key==='materials'?r.pack:'',r.packs??'',r.qty??'',key==='materials'?(r.costBasis==='required'?'Вся потребность':'Новая закупка'):'Объём работ',r.pricedQty??'',r.priceValue??'',key==='works'?RATE_LABELS[r.rateKind]:'Материал',r.clientPriceValue??'',r.value??'',key==='materials'?r.purchaseValue??'':'',r.source,r.priceDate,r.errors.join(', '),r.orientation??'',r.railPitch??'',r.bracketPitch??'',r.anchorsPerBracket??'',r.techNote??'']);
+    rows.push([title],['Наименование','Ед.','Способ количества','Расход на м²','Источник нормы','Толщина слоя, мм','Полезная ширина панели, м','Полезная высота панели, м','Чистое количество','Запас, %','Потребность с запасом','Пригодный выделенный остаток','Подтверждённый выделенный заказ','Покрыто остатком / заказом','Не покрыто до упаковок','Размер упаковки','Упаковок','Новая закупка','База стоимости','Количество к расчёту','Исходная ставка, ₽','Тип ставки','Клиентская ставка, ₽','Сумма клиенту, ₽','Стоимость новой закупки, ₽','Источник цены','Дата цены','Что заполнить','Направление облицовки','Шаг направляющих, м','Шаг кронштейнов, м','Анкеров на кронштейн','Примечание технологии','Число слоёв / множитель расхода']);
+    for(const r of c.sections[key].rows.filter(x=>x.enabled))rows.push([r.name,r.unit,MODE_LABELS[r.mode],r.mode==='norm'?r.norm:'',r.normSource,r.mode==='insulationVolume'?r.thickness:'',r.mode==='panels'?r.coverWidth:'',r.mode==='panels'?r.coverHeight:'',r.netQty??'',key==='materials'?r.reserve:'',r.demandQty??'',key==='materials'?r.stock:'',key==='materials'?r.ordered:'',key==='materials'?r.coveredQty??'':'',key==='materials'?r.neededQty??'':'',key==='materials'?r.pack:'',r.packs??'',r.qty??'',key==='materials'?(r.costBasis==='required'?'Вся потребность':'Новая закупка'):'Объём работ',r.pricedQty??'',r.priceValue??'',key==='works'?RATE_LABELS[r.rateKind]:'Материал',r.clientPriceValue??'',r.value??'',key==='materials'?r.purchaseValue??'':'',r.source,r.priceDate,r.errors.join(', '),r.orientation??'',r.railPitch??'',r.bracketPitch??'',r.anchorsPerBracket??'',r.techNote??'',r.normFactor??'']);
     rows.push(['Сумма заполненных позиций',c.sections[key].subtotal??''],[]);
   }
   rows.push(['ИСХОДНАЯ ГЕОМЕТРИЯ'],['Режим площади',{building:'По габаритам здания',walls:'По стенам минус проёмы',direct:'Введённая площадь уже чистая'}[state.areaMode]]);
@@ -383,7 +388,7 @@ export function validateImport(value) {
     for(const key of ['materials','works']) {
       const rows=value.scenarios[s][key];
       if(!Array.isArray(rows)||rows.length>200)throw Error('Повреждены позиции расчёта.');
-      for(const r of rows)if(!record(r)||!['id','name','unit','quantity','norm','price'].every(k=>str(r[k]))||!Object.hasOwn(MODE_LABELS,r.mode)||typeof r.enabled!=='boolean'||rowInputFields.some(k=>r[k]!==undefined&&!str(r[k]))||(r.rateKind!==undefined&&!Object.hasOwn(RATE_LABELS,r.rateKind))||(r.costBasis!==undefined&&!['purchase','required'].includes(r.costBasis))||(r.orientation!==undefined&&!['','horizontal','vertical'].includes(r.orientation))||(r.requiresNormSource!==undefined&&typeof r.requiresNormSource!=='boolean'))throw Error('Повреждена строка расчёта.');
+      for(const r of rows)if(!record(r)||!['id','name','unit','quantity','norm','price'].every(k=>str(r[k]))||!Object.hasOwn(MODE_LABELS,r.mode)||typeof r.enabled!=='boolean'||rowInputFields.some(k=>r[k]!==undefined&&!str(r[k]))||(r.rateKind!==undefined&&!Object.hasOwn(RATE_LABELS,r.rateKind))||(r.costBasis!==undefined&&!['purchase','required'].includes(r.costBasis))||(r.orientation!==undefined&&!['','horizontal','vertical'].includes(r.orientation))||(r.requiresNormSource!==undefined&&typeof r.requiresNormSource!=='boolean')||(r.requiresNormFactor!==undefined&&typeof r.requiresNormFactor!=='boolean'))throw Error('Повреждена строка расчёта.');
     }
   }
   const result=JSON.parse(JSON.stringify(value));result.version=4;
@@ -401,16 +406,22 @@ export function validateImport(value) {
 }
 
 // Optional catalog settings are validated without changing legacy project versions.
-export const SYSTEM_STRING_FIELDS=['familyId','variantId','orientation','panelLength','usefulWidth','fullWidth','reserve','railPitch','bracketPitch','anchorsPerBracket','fixingsPerM2','fastenerSource','layer1','layer2','insulationId','insulationId2','insulationCompatibilitySource','insulationReserve','insulationPack','insulationPack1','insulationPack2','insulationFixingsPerM2','insulationFixingSource','membraneOverlap','membranePack','source'];
+export const SYSTEM_STRING_FIELDS=['familyId','variantId','orientation','panelLength','usefulWidth','fullWidth','reserve','railPitch','bracketPitch','anchorsPerBracket','fixingsPerM2','fastenerSource','layer1','layer2','insulationId','insulationId2','insulationCompatibilitySource','insulationReserve','insulationPack','insulationPack1','insulationPack2','insulationFixingsPerM2','insulationFixingSource','membraneOverlap','membranePack','source','systemId','mountingMethod','baseType','panelCoreThickness','directFastenersPerM2','directFastenerSource','clipsPerM2','clipSource','adhesiveNorm','adhesiveSource','groutNorm','groutSource','primerNorm','primerSource','coatingNorm','coatingLayers','coatingSource','sealantNorm','sealantSource','substrateNorm','substrateSource','subsystemNorm','subsystemSource','jointStripNorm','jointStripSource'];
 export function validateSystemConfiguration(value) {
   const record=x=>x!==null&&typeof x==='object'&&!Array.isArray(x),str=x=>typeof x==='string'&&x.length<=5000;
   if(!record(value)||SYSTEM_STRING_FIELDS.some(k=>value[k]!==undefined&&!str(value[k])))throw Error('Повреждены параметры системы материалов.');
-  for(const k of ['confirmed','includeMembrane','applied'])if(value[k]!==undefined&&typeof value[k]!=='boolean')throw Error('Повреждены признаки системы материалов.');
+  for(const k of ['confirmed','includeMembrane','includeAdhesive','includeCoating','applied'])if(value[k]!==undefined&&typeof value[k]!=='boolean')throw Error('Повреждены признаки системы материалов.');
+  if(value.mountingMethod!==undefined&&!['','bracket-frame','direct-frame','direct','bonded','sandwich-frame','seam-base'].includes(value.mountingMethod))throw Error('Повреждён способ монтажа.');
+  if(value.baseType!==undefined&&!['','battens','solid'].includes(value.baseType))throw Error('Повреждён тип основания.');
   if(value.orientation!==undefined&&!['','horizontal','vertical'].includes(value.orientation))throw Error('Повреждено направление монтажа.');
   for(const key of ['variant','selection','insulationSelection','insulationSelection2'])if(value[key]!==undefined) {
     const card=value[key];if(!record(card))throw Error('Повреждён паспорт материала.');
-    for(const k of ['id','name','manufacturer','application','usefulWidth','fullWidth','minLength','maxLength'])if(card[k]!==undefined&&!str(card[k]))throw Error('Повреждён паспорт материала.');
-    for(const k of ['mounting','accessories','limitations','orientations','layerRoles'])if(card[k]!==undefined&&(!Array.isArray(card[k])||card[k].length>50||card[k].some(x=>!str(x))))throw Error('Повреждена инструкция материала.');
+    for(const k of ['id','name','manufacturer','application','usefulWidth','fullWidth','minLength','maxLength','systemId','systemKind','fastenerType','fastenerLabel','groutLabel','groutUnit','sealantLabel','sealantUnit','coatingLabel','coatingUnit','adhesiveUnit','primerUnit','panelCoreThickness','coreType','supportType','suggestedLength'])if(card[k]!==undefined&&!str(card[k]))throw Error('Повреждён паспорт материала.');
+    for(const k of ['mounting','accessories','limitations','orientations','layerRoles','mountingMethods','frameMethods','baseOptions','coreThicknessOptions'])if(card[k]!==undefined&&(!Array.isArray(card[k])||card[k].length>50||card[k].some(x=>!str(x))))throw Error('Повреждена инструкция материала.');
+    for(const key of ['grid','integratedInsulation','requiresType','needsJointGrout','needsJointSealant','needsCoating','adhesiveRequired','openJoint','needsFabrication','needsPrimer','manual','restricted'])if(card[key]!==undefined&&typeof card[key]!=='boolean')throw Error('Повреждена технология материала.');
+    if(card.coreThicknessOptions?.some(x=>!(number(x)>0)))throw Error('Повреждён перечень толщин сердечника.');
+    if(card.systemKind!==undefined&&!['linear','panel','wood','thermal','sandwich','seam','unknown'].includes(card.systemKind))throw Error('Повреждён тип фасадной системы.');
+    if(card.mountingMethods?.some(x=>!['frame','direct','bonded'].includes(x))||card.baseOptions?.some(x=>!['battens','solid'].includes(x))||card.frameMethods?.some(x=>!['bracket-frame','direct-frame'].includes(x)))throw Error('Повреждён способ монтажа материала.');
     if(card.sources!==undefined&&(!Array.isArray(card.sources)||card.sources.length>30||card.sources.some(x=>!record(x)||!str(x.title)||!str(x.url)||!/^https?:\/\//i.test(x.url)||(x.checked!==undefined&&!str(x.checked))||(x.pages!==undefined&&!str(x.pages)))))throw Error('Повреждены источники материала.');
   }
   return value;
