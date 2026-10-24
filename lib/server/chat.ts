@@ -3,6 +3,7 @@ import { MAX_HISTORY_BYTES, MAX_HISTORY_MESSAGE_LENGTH, MAX_HISTORY_MESSAGES, MA
 import { splitMarkdownRow } from "@/lib/estimate";
 import { BodyError } from "@/lib/server/http";
 import { constructionKnowledgeContext, selectConstructionKnowledge } from "@/lib/server/construction-knowledge";
+import { facadeCatalogContext, hasFacadeCatalogSubject } from "@/lib/server/facade-catalog";
 
 export function validateChatRequest(body: unknown): ChatRequest {
   if (!body || typeof body !== "object" || Array.isArray(body)) throw new BodyError(400, "Некорректный формат запроса.");
@@ -43,7 +44,7 @@ export function resolveFacadeOptions(message: string, requested: FacadeOptions =
 const FACADE_SUBJECT = /фасад|откос|подсистем|сайдинг|клинкер|фиброцемент|сфтк|вентфасад|(?:^|[^\p{L}])нфс(?:[^\p{L}]|$)|hpl/iu;
 const OTHER_CONSTRUCTION_SUBJECT = /фундамент|бетон|котлован|землян|кровл|стропил|перекрыти|перегород|стяжк|водопровод|канализац|электропровод|электроснабж|внутренн.{0,16}отделк|ванн|санузл|кухн/iu;
 function facadeSubject(message: string): boolean {
-  return FACADE_SUBJECT.test(message) || /облицовк|наружн.{0,20}утеплен/iu.test(message) && !OTHER_CONSTRUCTION_SUBJECT.test(message);
+  return FACADE_SUBJECT.test(message) || hasFacadeCatalogSubject(message) || /облицовк|наружн.{0,20}утеплен/iu.test(message) && !OTHER_CONSTRUCTION_SUBJECT.test(message);
 }
 function continuation(message: string): boolean {
   return message.length <= 400 && /^(?:а\s|и\s|тогда\s|теперь\s|продолж|подробнее|что дальше|проверь|уточни|поменя|измени|добав|убери|замени|обнов|пересчитай|верни)|(?:^|[^\p{L}])(?:это|этот|этого|этой|эти|их|него|такой|данного)(?:[^\p{L}]|$)|смет|расч[её]т|площад|количеств|материал|стоимост/iu.test(message);
@@ -131,6 +132,7 @@ export function buildInstructions(request: ChatRequest): string {
     estimate && facade ? "В каждой таблице «Работы» сохрани или добавь одну общую строку «Монтаж и демонтаж строительных лесов». Без подтверждённых исходных данных её количество, цена, сумма и единица остаются пустыми; примечание «Уточнить необходимость и объём; если леса не нужны или предоставлены заказчиком — согласовать это». Не добавляй аренду, доставку или вывоз без запроса. Не расширяй существующий перечень произвольными позициями. Оконные и дверные откосы учитывай отдельно от фасада; если составляется новая смета и их необходимость неизвестна, добавь позиции для согласования с пустыми количествами и ценами. Для исходной сметы сохраняй строки и отмечай недостающие откосы в проверке, не создавай объёмы по догадке. Отдельно запроси количество окон, ширину/высоту проёма, глубину откоса, количество дверей, ширину/высоту дверного проёма, глубину дверного откоса, число отделываемых сторон и фактическую длину откосов, материал, утепление, отливы и герметизацию — только если это неизвестно и применимо." : "",
     facade && request.mode !== "documents" && !documentDraft(request) && !constructionReferences.length ? FACADE_WORK_KNOWLEDGE : "",
     constructionKnowledgeContext(constructionReferences),
+    facadeCatalogContext(request, estimate),
   ].filter(Boolean).join("\n\n");
 }
 

@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "source": "Standalone facade calculator",
+  "sourceCommit": "0f7f0a7fac19773512fb171cb1a56f5be07782ca",
+  "sourceDirectory": "dist",
+  "destinationDirectory": "public/facade-calculator",
+  "files": [
+    {
+      "path": "public/facade-calculator/app.mjs",
+      "sha256": "b80d1546cd5915b26f82d02f7c93c7c68d6d173b9c122c31c8340251b4ce594a",
+      "bytes": 70131
+    },
+    {
+      "path": "public/facade-calculator/brand/logo-sl-approved-light.png",
+      "sha256": "3252f7cea9f749e436963940fad54bd72b995b996c9f3dd6a75e4993ceb30ed3",
+      "bytes": 376788
+    },
+    {
+      "path": "public/facade-calculator/catalog-ui.mjs",
+      "sha256": "ce76c5ee1ef9a63d83e5f1f5e90d0667c1b8e1523b24c71c157197ae3bfdc272",
+      "bytes": 16780
+    },
+    {
+      "path": "public/facade-calculator/engine.mjs",
+      "sha256": "ea7dcfad40ec1a51399c77dbdc20bc58d6ce488a207aca28867c5d74f0bf95fd",
+      "bytes": 50146
+    },
+    {
+      "path": "public/facade-calculator/index.html",
+      "sha256": "818f17ea86b48678eee159d027bb202aca9f98afcda69f59b082e91e554d5253",
+      "bytes": 33987
+    },
+    {
+      "path": "public/facade-calculator/material-catalog.mjs",
+      "sha256": "7962bc45363934bb0225a4305c5bc9398e2fdfcb2c8fd25c78e9aa217df26e7e",
+      "bytes": 77903
+    },
+    {
+      "path": "public/facade-calculator/project-link.mjs",
+      "sha256": "8336b3f77aafc3f24545c99dca3968f34738815ae9fd06a4c34ceffc377eb9e0",
+      "bytes": 5509
+    },
+    {
+      "path": "public/facade-calculator/project-store.mjs",
+      "sha256": "1ef64ea76bd2f43a9d157914aed4f1f4c339a4826b88f60a529e96bf8bad951f",
+      "bytes": 11497
+    },
+    {
+      "path": "public/facade-calculator/report.mjs",
+      "sha256": "c1679906961cabc073e7e95d3f4e67db60bfb08ba97297de3e189660ec81b67c",
+      "bytes": 28057
+    },
+    {
+      "path": "public/facade-calculator/styles.css",
+      "sha256": "9ffa5aa5c682844b243734af8fb381ce7930a2bfe7c6c93658915ad0f8a5f3a8",
+      "bytes": 51586
+    },
+    {
+      "path": "public/facade-calculator/system-kit.mjs",
+      "sha256": "c06fc3c67acaeda91872ae13d52969c95ef101d54ee05c79da26e273b6810446",
+      "bytes": 21439
+    },
+    {
+      "path": "public/facade-calculator/takeoff.mjs",
+      "sha256": "f6f9f0fbabc6e20f9e063d1c3d1db7b53cf56c605b36d9c652edf89e697e262d",
+      "bytes": 1004
+    }
+  ],
+  "tests": "calculator-tests/*.test.mjs; relative imports adapted to mirrored public files. Optional private fixtures are not included.",
+  "excluded": [
+    "Sites hosting identity",
+    ".git",
+    "local estimate data",
+    "private source documents",
+    "generated catalog.json and materials-guide.md (created from the mirrored catalog module)"
+  ]
+}

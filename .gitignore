@@ -21,3 +21,6 @@ __pycache__/
 /plugin-source/svoi-lyudi-builder/plugin.json
 /plugin-source/svoi-lyudi-builder/.codex-plugin/
 /plugin-source/svoi-lyudi-builder/skills/construction-assistant/SKILL.md
+
+# Generated from the calculator catalog for the server context.
+data/facade-material-catalog.json

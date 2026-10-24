@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "tsx --test --test-concurrency=1 tests/*.test.ts",
+    "test": "tsx --test --test-concurrency=1 tests/*.test.ts && npm run test:calculator",
     "typecheck": "next typegen && tsc --noEmit",
     "memory:install": "node scripts/codebase-memory.mjs install",
     "memory:index": "node scripts/codebase-memory.mjs index",
@@ -15,10 +15,12 @@
     "memory:serve": "node scripts/codebase-memory.mjs serve",
     "memory:export": "node scripts/export-codebase-memory.mjs",
     "knowledge:export": "node scripts/export-construction-knowledge.mjs",
-    "pretypecheck": "npm run knowledge:export",
-    "prebuild": "node scripts/check-drive-connector.mjs && npm run plugin:check && npm run knowledge:export && npm run memory:export",
-    "pretest": "npm run plugin:check && npm run knowledge:export && npm run memory:export",
-    "predev": "npm run plugin:check && npm run knowledge:export && npm run memory:export"
+    "pretypecheck": "npm run knowledge:export && npm run catalog:export",
+    "prebuild": "node scripts/check-drive-connector.mjs && npm run plugin:check && npm run knowledge:export && npm run catalog:export && npm run memory:export",
+    "pretest": "npm run plugin:check && npm run knowledge:export && npm run catalog:export && npm run memory:export",
+    "predev": "npm run plugin:check && npm run knowledge:export && npm run catalog:export && npm run memory:export",
+    "catalog:export": "node scripts/export-facade-catalog.mjs",
+    "test:calculator": "node --test calculator-tests/*.test.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.1",
