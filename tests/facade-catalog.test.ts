@@ -178,6 +178,15 @@ test("roof, fence and furniture requests do not inherit facade mounting from sha
   assert.equal(hasFacadeCatalogSubject("Монтаж профнастила на фасаде"), true);
 });
 
+test("interior finishes and heating do not receive exterior facade assemblies", () => {
+  for (const message of ["Декоративная штукатурка в гостиной", "Клинкерная плитка на лестнице", "Гибкий камень для интерьера спальни", "Тёплая стена с водяным отоплением", "Забудь фасад, нужна декоративная штукатурка в прихожей"]) {
+    assert.equal(hasFacadeCatalogSubject(message), false, message);
+    assert.equal(facadeCatalogContext({mode:"estimate",message,history:[{role:"user",content:"Обсудим мокрый фасад и клинкер"}]}), "", message);
+  }
+  assert.equal(hasFacadeCatalogSubject("Клинкерная плитка на фасаде у наружной лестницы"), true);
+  assert.notEqual(facadeCatalogContext({mode:"facade",message:"А внутренний слой утепления?",history:[{role:"user",content:"СФТК ТН-ФАСАД Профи"}]}), "");
+});
+
 test("authenticated chat passes selected product evidence to the actual model request", async () => {
   const keys = ["ASSISTANT_ACCESS_PASSWORD", "ASSISTANT_SESSION_SECRET", "ASSISTANT_PUBLIC_ORIGIN", "OPENAI_API_KEY"] as const;
   const prior = Object.fromEntries(keys.map(key => [key, process.env[key]])), originalFetch = globalThis.fetch;

@@ -121,8 +121,9 @@ const otherSubject = /фундамент|(?:^|[^\p{L}])бетон|котлова
 const facadeSubject = /фасад|сайдинг|подсистем|вентфасад|наружн.{0,20}(?:облицов|утеплен)|(?:^|[^\p{L}])нфс(?:$|[^\p{L}])/iu;
 const continuation = (value: string) => value.length <= 400 && /^(?:а\s|и\s|тогда\s|теперь\s|продолж|подробнее|что дальше|проверь|уточни|поменя|измени|добав|убери|замени|обнов|пересчитай|верни)|(?:^|[^\p{L}])(?:это|этот|этого|этой|эти|их|него|такой|данного)(?:$|[^\p{L}])|смет|расч[её]т|площад|количеств|материал|стоимост/iu.test(value);
 const woodenFinishOnly = (value: string) => /деревян|деревесин|лиственниц|термодерев|из\s+сосн|из\s+кедр/iu.test(value) && !/металл|оцинков|стал[ьиь]/iu.test(value);
-const explicitOtherTask = (value: string) => otherSubject.test(value) && /забудь|отложи|отмен[ия]|вместо\s+(?:этого|фасада|сайдинга)/iu.test(value);
-const outsideFacade = (value: string) => explicitOtherTask(value) || otherSubject.test(value) && !facadeSubject.test(value);
+const interiorSubject = /интерьер|гостин|спальн|прихож|лестниц|отоплен|внутренн.{0,18}(?:штукатур|окраск|отделк)|(?:^|[^\p{L}])пол(?:а|у|ы|ов)?(?:$|[^\p{L}])/iu;
+const explicitOtherTask = (value: string) => (otherSubject.test(value) || interiorSubject.test(value)) && /забудь|отложи|отмен[ия]|вместо\s+(?:этого|фасада|сайдинга)/iu.test(value);
+const outsideFacade = (value: string) => explicitOtherTask(value) || (otherSubject.test(value) || interiorSubject.test(value)) && !facadeSubject.test(value);
 const systemPatterns: Array<[string, RegExp]> = [
   ["vinyl", /винил|(?:^|[^\p{L}])пвх[\s-]+сайдинг|сайдинг[\s-]+пвх|d[öoе]cke|д[её]ке/iu],
   ["acrylic", /акрил\p{L}*\s+сайдинг|сайдинг\p{L}*\s+акрил|канада\s+плюс\s+премиум|(?:^|[^\p{L}])asa(?:$|[^\p{L}])/iu],
