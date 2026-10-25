@@ -2,12 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
+import { LEDGER_PENDING_STORAGE_KEY } from "@/lib/ledger-contract";
 import type { LedgerClient, LedgerCommand, LedgerReply, LedgerSelection, LedgerStatus } from "@/lib/ledger-contract";
 import styles from "./BusinessLedger.module.css";
 
 const setupUrl = "https://vercel.com/shellehs38/my-gpt-chat/settings/environment-variables";
 const spreadsheetUrl = "https://docs.google.com/spreadsheets/d/1-frD3ABf1G-IH1cd31Fktb9NY2XPLg05VGLOwSsgA2U/edit?gid=0";
-const pendingStorageKey = "svoi-lyudi.ledger.pending.v1";
 type PendingRecord = { version: 1; payload: Extract<LedgerCommand, { kind: "message" }>; stage: "pending" | "choice"; createdAt: number };
 function parsePending(raw: string): PendingRecord {
   const value: unknown = JSON.parse(raw);
@@ -82,12 +82,12 @@ export default function BusinessLedger({ onBusyChange }: { onBusyChange?: (busy:
 
   function persistPending(record: PendingRecord) {
     pendingRef.current = record; setPending(record);
-    try { window.sessionStorage.setItem(pendingStorageKey, JSON.stringify(record)); }
+    try { window.sessionStorage.setItem(LEDGER_PENDING_STORAGE_KEY, JSON.stringify(record)); }
     catch { setStorageWarning("Браузер не сохранил незавершённую команду. Не закрывайте вкладку до подтверждения результата; при сбое используйте тот же запрос здесь."); }
   }
   function clearPending() {
     pendingRef.current = null; setPending(null); setRecovered(false);
-    try { window.sessionStorage.removeItem(pendingStorageKey); }
+    try { window.sessionStorage.removeItem(LEDGER_PENDING_STORAGE_KEY); }
     catch { setStorageWarning("Хранилище вкладки недоступно. Перед новой записью после перезагрузки проверьте предыдущую операцию в таблице."); }
   }
   async function refreshStatus() {
@@ -106,7 +106,7 @@ export default function BusinessLedger({ onBusyChange }: { onBusyChange?: (busy:
   useEffect(() => {
     mounted.current = true;
     try {
-      const raw = window.sessionStorage.getItem(pendingStorageKey);
+      const raw = window.sessionStorage.getItem(LEDGER_PENDING_STORAGE_KEY);
       if (raw) {
         const restored = parsePending(raw);
         pendingRef.current = restored; setPending(restored); setRecovered(true); setFailed(restored.payload);

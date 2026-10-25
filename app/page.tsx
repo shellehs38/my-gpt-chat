@@ -12,8 +12,11 @@ import { ASSISTANT_MODES as modes, revisionRequest } from "@/lib/assistant-modes
 import { MAX_MESSAGE_LENGTH, MAX_HISTORY_MESSAGE_LENGTH, MAX_BODY_BYTES } from "@/lib/chat-contract";
 import BusinessLedger from "@/components/BusinessLedger";
 import DriveConnection from "@/components/DriveConnection";
-import type { DriveAutosave } from "@/lib/drive-autosave";
+import { clearDriveAutosaveLocalData, type DriveAutosave } from "@/lib/drive-autosave";
+import { SessionActions, WorkspaceStoragePanel } from "@/components/WorkspacePrivacyControls";
 import { brandedDocumentHtml, brandedMarkdown, COMPANY_LOGO_URL, loadCompanyLogo } from "@/lib/document-branding";
+import { LEDGER_PENDING_STORAGE_KEY } from "@/lib/ledger-contract";
+import { workspaceHasUserData } from "@/lib/workspace-ui";
 
 type AuthState = { authenticated: boolean; configured: boolean };
 const bytes = (value: unknown) => new TextEncoder().encode(typeof value === "string" ? value : JSON.stringify(value)).byteLength;
@@ -48,6 +51,8 @@ function DocumentEditor({ document, onEdit, calculate = true }: { document: Esti
 
 export default function Home() {
   const [workspace, setWorkspace] = useState<Workspace>(emptyWorkspace);
+  const latestWorkspace = useRef(workspace);
+  latestWorkspace.current = workspace;
   const [hydrated, setHydrated] = useState(false);
   const [storageBlocked, setStorageBlocked] = useState(false);
   const [storageError, setStorageError] = useState("");
@@ -59,6 +64,7 @@ export default function Home() {
   const [businessView, setBusinessView] = useState<"accounting" | "sales">("accounting");
   const loading = pendingMode === workspace.mode;
   const requestBusy = pendingMode !== null;
+  const [sessionBusy, setSessionBusy] = useState(false);
   const [ledgerBusy, setLedgerBusy] = useState(false);
   const [exportBusy, setExportBusy] = useState(false);
   const [errors, setErrors] = useState<Partial<Record<Mode, string>>>({});
@@ -71,6 +77,7 @@ export default function Home() {
   const exportInFlight = useRef(false);
   const cloud = useRef<DriveAutosave | null>(null);
   const documentContent = useRef<HTMLDivElement>(null);
+  const messageInput = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
     try { setWorkspace(loadWorkspace(window.localStorage)); }
     catch (cause) { setStorageError(cause instanceof Error ? cause.message : "Хранилище браузера недоступно."); setStorageBlocked(true); }
@@ -84,15 +91,15 @@ export default function Home() {
     return () => { cancelled = true; };
   }, []);
   useEffect(() => {
-    if (!hydrated || storageBlocked) return;
+    if (!hydrated || storageBlocked || !auth?.authenticated) return;
     const timer = setTimeout(() => { try { saveWorkspace(window.localStorage, workspace); setStorageError(""); } catch { setStorageError("Не удалось сохранить проект в этом браузере. Экспортируйте резервную копию перед закрытием."); } }, 250);
     return () => clearTimeout(timer);
-  }, [workspace, hydrated, storageBlocked]);
+  }, [workspace, hydrated, storageBlocked, auth?.authenticated]);
   // Flush the latest edits when the browser navigates away instead of losing the debounce window.
   useEffect(() => {
-    const flush = () => { if (hydrated && !storageBlocked) { try { saveWorkspace(window.localStorage, workspace); } catch { /* Existing project is retained; status is reported by the normal save path. */ } } };
+    const flush = () => { if (hydrated && !storageBlocked && auth?.authenticated) { try { saveWorkspace(window.localStorage, workspace); } catch { /* Existing project is retained; status is reported by the normal save path. */ } } };
     window.addEventListener("pagehide", flush); return () => window.removeEventListener("pagehide", flush);
-  }, [workspace, hydrated, storageBlocked]);
+  }, [workspace, hydrated, storageBlocked, auth?.authenticated]);
   const selectedMode = modes.find((item) => item.id === workspace.mode) ?? modes[0];
   const current = activeModeDocument(workspace);
   const versions = modeDocuments(workspace);
@@ -106,19 +113,64 @@ export default function Home() {
     catch (cause) { setAuthError(cause instanceof Error ? cause.message : "Не удалось войти."); }
     finally { setAuthLoading(false); }
   }
-  async function logout() {
-    try { const response = await fetch("/api/auth", { method: "DELETE" }); if (!response.ok) throw new Error("Не удалось завершить сессию."); setAuth((value) => value ? { ...value, authenticated: false } : value); setPassword(""); }
-    catch (cause) { setAuthError(cause instanceof Error ? cause.message : "Не удалось выйти."); }
+  async function logout(clearLocalData: boolean) {
+    if (sessionBusy) return;
+    if (clearLocalData && !window.confirm("Выйти и безвозвратно удалить из этого браузера диалог, черновик и все сохранённые версии? При необходимости сначала экспортируйте проект.")) return;
+    setSessionBusy(true); setAuthError("");
+    let sessionEnded = false;
+    try {
+      if (!clearLocalData) {
+        try {
+          if (!storageBlocked) saveWorkspace(window.localStorage, workspace);
+          setStorageError(storageBlocked ? "Повреждённая локальная копия сохранена без перезаписи. Восстановите её из экспорта или начните новый проект явно." : "");
+        }
+        catch {
+          setStorageError("Последние изменения не удалось сохранить. Экспортируйте проект и повторите выход.");
+          throw new Error("Выход отменён: браузер не сохранил последние изменения проекта.");
+        }
+      }
+      const response = await fetch("/api/auth", { method: "DELETE" });
+      if (!response.ok) throw new Error("Не удалось завершить сессию.");
+      sessionEnded = true;
+      if (clearLocalData) {
+        try {
+          if (cloud.current) cloud.current.pause(); else clearDriveAutosaveLocalData(window.localStorage);
+          window.localStorage.removeItem(WORKSPACE_STORAGE_KEY);
+          window.sessionStorage.removeItem(LEDGER_PENDING_STORAGE_KEY);
+          setWorkspace(emptyWorkspace()); setStorageBlocked(false); setStorageError(""); setErrors({}); setNotices({});
+        } catch {
+          setWorkspace(emptyWorkspace()); setStorageBlocked(true);
+          throw new Error("Сессия завершена, но браузер не разрешил удалить сохранённый проект. Очистите данные сайта в настройках браузера.");
+        }
+      }
+      setAuth((value) => value ? { ...value, authenticated: false } : value); setPassword("");
+    } catch (cause) {
+      if (sessionEnded) setAuth((value) => value ? { ...value, authenticated: false } : value);
+      setAuthError(cause instanceof Error ? cause.message : "Не удалось выйти.");
+    } finally { setSessionBusy(false); }
   }
   async function sendPayload(payload: ChatPayload) {
     if (inFlight.current || !auth?.authenticated) return;
     if (payload.message.length > MAX_MESSAGE_LENGTH || bytes(payload) > MAX_BODY_BYTES) { setError("Запрос слишком велик. Сократите сообщение или экспортируйте документ отдельно."); return; }
     inFlight.current = true; setPendingMode(payload.mode); setError("", payload.mode); setNotice("", payload.mode);
-    setWorkspace(value => recordModeRequest(value, payload));
+    setWorkspace(value => {
+      const next = recordModeRequest(value, payload);
+      latestWorkspace.current = next;
+      return next;
+    });
     try {
       const response = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const data = await response.json();
-      if (!response.ok) { if (response.status === 401) setAuth((value) => value ? { ...value, authenticated: false } : value); throw new Error(data.error || "Ошибка запроса."); }
+      if (!response.ok) {
+        if (response.status === 401) {
+          if (!storageBlocked) {
+            try { saveWorkspace(window.localStorage, latestWorkspace.current); setStorageError(""); }
+            catch { setStorageError("Сессия завершилась, а последние изменения не удалось сохранить. Не закрывайте вкладку до экспорта проекта."); }
+          }
+          setAuth((value) => value ? { ...value, authenticated: false } : value);
+        }
+        throw new Error(data.error || "Ошибка запроса.");
+      }
       if (typeof data.reply !== "string" || !data.reply.trim()) throw new Error("Помощник не вернул ответ. Предыдущие данные сохранены.");
       const id = createDocumentId();
       const calculation = data.calculation === "estimate" || data.calculation === "none" ? data.calculation
@@ -148,8 +200,21 @@ export default function Home() {
     if (content.length > MAX_HISTORY_MESSAGE_LENGTH) { setError("Документ слишком велик для одного запроса. Экспортируйте его и разбейте проверку по разделам."); return; }
     void sendPayload(payload);
   }
+  function startNewProject() {
+    const warning = storageBlocked
+      ? "Начать новый проект и удалить повреждённую локальную копию из этого браузера? Сначала экспортируйте её, если она нужна для восстановления."
+      : "Начать новый проект и удалить текущий диалог, черновик и сохранённые версии из этого браузера? При необходимости сначала экспортируйте проект.";
+    if ((storageBlocked || workspaceHasUserData(workspace)) && !window.confirm(warning)) return;
+    const next = emptyWorkspace();
+    try {
+      saveWorkspace(window.localStorage, next);
+      setWorkspace(next); setStorageBlocked(false); setStorageError(""); setErrors({}); setNotices({ general: "Новый проект создан." });
+      window.requestAnimationFrame(() => messageInput.current?.focus());
+    } catch { setStorageError("Не удалось безопасно создать новый проект: браузер не разрешил обновить локальные данные. Текущий проект сохранён."); }
+  }
   async function importWorkspace(event: ChangeEvent<HTMLInputElement>) {
     const input = event.currentTarget;
+    if (!auth?.authenticated) { input.value = ""; return; }
     const file = input.files?.[0];
     if (!file) return;
     try {
@@ -164,12 +229,19 @@ export default function Home() {
   }
   function clearWorkspace() {
     if (!window.confirm("Удалить диалог и все версии из этого браузера? Сначала можно экспортировать резервную копию.")) return;
-    try { cloud.current?.pause(); window.localStorage.removeItem(WORKSPACE_STORAGE_KEY); setStorageBlocked(false); setWorkspace(emptyWorkspace()); setStorageError(""); setErrors({}); setNotices({ general: "Локальные данные удалены." }); } catch { setStorageError("Браузер не разрешил удалить данные."); }
+    try { if (cloud.current) cloud.current.pause(); else clearDriveAutosaveLocalData(window.localStorage); window.localStorage.removeItem(WORKSPACE_STORAGE_KEY); window.sessionStorage.removeItem(LEDGER_PENDING_STORAGE_KEY); setStorageBlocked(false); setWorkspace(emptyWorkspace()); setStorageError(""); setErrors({}); setNotices({ general: "Локальные данные удалены." }); } catch { setStorageError("Браузер не разрешил удалить данные."); }
+  }
+  function exportWorkspace() {
+    if (!auth?.authenticated) return;
+    try {
+      const content = storageBlocked ? window.localStorage.getItem(WORKSPACE_STORAGE_KEY) ?? JSON.stringify(workspace) : JSON.stringify(workspace);
+      download(content, "builder-workspace.json", "application/json");
+    } catch { setStorageError("Не удалось экспортировать данные браузера."); }
   }
   async function copyAnswer() {
     if (!current) return;
-    try { await navigator.clipboard.writeText(brandedMarkdown(serializeEstimateDocument(current.document, current.calculation !== "none"), window.location.origin)); setNotice("Скопирована текущая версия с вашими правками и ссылкой на логотип. Для файла со встроенным изображением используйте «Скачать документ с логотипом»."); }
-    catch { setNotice("Копирование недоступно в этом браузере. Используйте «Скачать текст»."); }
+    try { await navigator.clipboard.writeText(brandedMarkdown(serializeEstimateDocument(current.document, current.calculation !== "none"), window.location.origin)); setNotice("Скопирована текущая версия с вашими правками и ссылкой на логотип. Для файла со встроенным изображением используйте «Скачать HTML с логотипом»."); }
+    catch { setNotice("Копирование недоступно в этом браузере. Используйте «Скачать Markdown»."); }
   }
   async function downloadBrandedDocument() {
     if (!current || !documentContent.current || exportInFlight.current) return;
@@ -190,29 +262,29 @@ export default function Home() {
   return <main className="app-shell">
     <header className="hero"><img className="company-logo" src={COMPANY_LOGO_URL} width={1672} height={941} alt="Логотип СВОИ ЛЮДИ" /><div><h1 className="eyebrow">СТРОИТЕЛЬНЫЙ ПОМОЩНИК</h1><p className="subtitle">Помощник для строительного бизнеса в Иркутске</p></div></header>
     {!auth && <p className="status" role="status">Проверяю доступ…</p>}
-    {auth && !auth.authenticated && <section className="panel auth-panel"><h2>Вход владельца</h2>{auth.configured ? <form onSubmit={login}><label className="field-label" htmlFor="access-password">Пароль помощника</label><input id="access-password" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required maxLength={256} /><button className="primary-button" disabled={authLoading || !password} type="submit">{authLoading ? "Проверяю…" : "Войти"}</button></form> : <p>Сервис ещё не настроен. Обратитесь к администратору.</p>}{authError && <p className="error-box" role="alert">{authError}</p>}</section>}
+    {auth && !auth.authenticated && <section className="panel auth-panel"><h2>Вход владельца</h2>{auth.configured ? <form onSubmit={login}><label className="field-label" htmlFor="access-password">Пароль помощника</label><input id="access-password" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required maxLength={256} /><button className="primary-button" disabled={authLoading || !password} type="submit">{authLoading ? "Проверяю…" : "Войти"}</button></form> : <p>Сервис ещё не настроен. Обратитесь к администратору.</p>}<p className="privacy-warning" role="note">Этот браузер может хранить предыдущий проект. На общем компьютере после работы используйте «Выйти и удалить локальные данные».</p>{authError && <p className="error-box" role="alert">{authError}</p>}</section>}
     {auth?.authenticated && <>
-      <section className="panel"><div className="section-heading"><div><h2>Выберите направление</h2><p>Это помогает помощнику точнее учитывать задачу.</p></div><button type="button" className="secondary-button" onClick={logout} disabled={requestBusy || ledgerBusy}>Выйти</button></div><div className="mode-grid">{modes.map((item) => <button className={workspace.mode === item.id ? "mode-card selected" : "mode-card"} type="button" key={item.id} onClick={() => setWorkspace(value => switchWorkspaceMode(value, item.id))} aria-pressed={workspace.mode === item.id}><span className="mode-title">{item.label}</span><span className="mode-description">{item.description}</span></button>)}</div></section>
+      <section className="panel mode-panel"><div className="section-heading"><div><h2>Выберите направление</h2><p>Это помогает помощнику точнее учитывать задачу.</p></div></div><div className="mode-grid">{modes.map((item) => <button className={workspace.mode === item.id ? "mode-card selected" : "mode-card"} type="button" key={item.id} onClick={() => setWorkspace(value => switchWorkspaceMode(value, item.id))} aria-label={`${item.label}. ${item.description}`} aria-pressed={workspace.mode === item.id}><span className="mode-title">{item.label}</span><span className="mode-description" aria-hidden="true">{item.description}</span></button>)}</div><SessionActions busy={requestBusy || ledgerBusy || sessionBusy} onNewProject={startNewProject} onLogout={() => void logout(false)} onLogoutAndClear={() => void logout(true)} />{authError && <p className="error-box" role="alert">{authError}</p>}</section>
       {workspace.mode === "business" && <section className="panel"><h2>Бизнес и продажи</h2><div className="action-row" role="group" aria-label="Разделы бизнеса"><button type="button" className={businessView === "accounting" ? "primary-button" : "secondary-button"} aria-pressed={businessView === "accounting"} onClick={() => setBusinessView("accounting")}>Клиенты и учёт</button><button type="button" className={businessView === "sales" ? "primary-button" : "secondary-button"} aria-pressed={businessView === "sales"} onClick={() => setBusinessView("sales")}>Продажи и развитие</button></div><p>{businessView === "accounting" ? "Клиенты, объекты и расходы: чтение и запись в рабочую таблицу." : "Консультации по продажам, переговорам и привлечению заказов. Сообщения здесь не записывают клиентов или расходы в таблицу."}</p></section>}
       <div hidden={workspace.mode !== "business" || businessView !== "accounting"}><BusinessLedger onBusyChange={setLedgerBusy} /></div>
       <section className="panel chat-panel" style={workspace.mode === "business" && businessView === "accounting" ? { display: "none" } : undefined}><div className="section-heading"><div><p className="eyebrow">ТЕКУЩИЙ РЕЖИМ</p><h2>{selectedMode.label}</h2><p>{selectedMode.description}</p></div></div>
         {workspace.mode === "facade" && <div className="variant-select"><label className="field-label" htmlFor="facade-options">Варианты фасада</label><select id="facade-options" value={workspace.facadeOptions} onChange={(event) => setWorkspace((value) => ({ ...value, facadeOptions: event.target.value as FacadeOptions }))}><option value="auto">Определить по запросу</option><option value="without">Без утепления</option><option value="with">С утеплением</option><option value="both">Сравнить оба варианта</option></select></div>}
-        {(workspace.mode === "facade" || workspace.mode === "estimate") && <aside className="calculator-entry"><h3>Калькулятор фасада и каталог материалов</h3><p>Выбор производителя, панели, утеплитель по слоям, подсистема, работы и смета. У каждого профиля — инструкция монтажа и источники.</p><div className="action-row"><a className="primary-button" href="/facade-calculator/" target="_blank" rel="noopener noreferrer">Открыть калькулятор</a><a className="secondary-button" href="/facade-calculator/materials-guide.md" target="_blank" rel="noopener noreferrer">Материалы и монтаж</a></div><p className="hint">Проекты калькулятора хранятся отдельно в браузере. Для переноса из прежнего калькулятора сохраните там JSON и загрузите его здесь через «Файл проекта».</p><a className="calculator-previous" href="https://svoi-lyudi-facade.ardentfig9.chatgpt.site" target="_blank" rel="noopener noreferrer">Открыть прежние объекты в отдельном калькуляторе ↗</a></aside>}
+        {pendingMode && pendingMode !== workspace.mode && <p className="status" role="status">Выполняется запрос во вкладке «{modes.find(item => item.id === pendingMode)?.label}». Здесь можно подготовить черновик.</p>}
+        <form onSubmit={submit}><label className="field-label" htmlFor="message">Опишите задачу</label><textarea ref={messageInput} id="message" value={workspace.draft} onChange={(event) => setWorkspace((value) => ({ ...value, draft: event.target.value }))} placeholder={selectedMode.prompt} rows={5} maxLength={MAX_MESSAGE_LENGTH} /><div className="form-footer"><span className="hint">{workspace.draft.length}/{MAX_MESSAGE_LENGTH} символов. Предыдущие вопросы учитываются.</span><button className="primary-button" type="submit" disabled={requestBusy || !workspace.draft.trim() || !hydrated}>{loading ? "Готовлю ответ…" : "Отправить вопрос"}</button></div></form>
         <p>У этой вкладки свой диалог, черновик и сохранённые ответы.</p>
         <div className="action-row" aria-label="Примеры задач">{selectedMode.examples.map(example => <button type="button" className="secondary-button" key={example} onClick={() => setWorkspace(value => ({ ...value, draft: example }))}>{example}</button>)}</div>
-        {pendingMode && pendingMode !== workspace.mode && <p className="status" role="status">Выполняется запрос во вкладке «{modes.find(item => item.id === pendingMode)?.label}». Здесь можно подготовить черновик.</p>}
-        <form onSubmit={submit}><label className="field-label" htmlFor="message">Опишите задачу</label><textarea id="message" value={workspace.draft} onChange={(event) => setWorkspace((value) => ({ ...value, draft: event.target.value }))} placeholder={selectedMode.prompt} rows={5} maxLength={MAX_MESSAGE_LENGTH} /><div className="form-footer"><span className="hint">{workspace.draft.length}/{MAX_MESSAGE_LENGTH} символов. Предыдущие вопросы учитываются.</span><button className="primary-button" type="submit" disabled={requestBusy || !workspace.draft.trim() || !hydrated}>{loading ? "Готовлю ответ…" : "Отправить вопрос"}</button></div></form>
+        {(workspace.mode === "facade" || workspace.mode === "estimate") && <aside className="calculator-entry"><h3>Калькулятор фасада и каталог материалов</h3><p>Выбор производителя, панели, утеплитель по слоям, подсистема, работы и смета. У каждого профиля — инструкция монтажа и источники.</p><div className="action-row"><a className="primary-button" href="/facade-calculator/" target="_blank" rel="noopener noreferrer">Открыть калькулятор</a><a className="secondary-button" href="/facade-calculator/materials-guide.md" target="_blank" rel="noopener noreferrer">Материалы и монтаж</a></div><p className="hint">Проекты калькулятора хранятся отдельно в браузере. Для переноса из прежнего калькулятора сохраните там JSON и загрузите его здесь через «Файл проекта».</p><a className="calculator-previous" href="https://svoi-lyudi-facade.ardentfig9.chatgpt.site" target="_blank" rel="noopener noreferrer">Открыть прежние объекты в отдельном калькуляторе ↗</a></aside>}
         {loading && <div className="status" role="status">Анализирую задачу. Предыдущий ответ и правки остаются доступными.</div>}
         {error && <div className="error-box" role="alert"><strong>Не удалось получить ответ</strong><p>{error}</p>{failedRequest && <button className="secondary-button" type="button" disabled={requestBusy} onClick={() => void sendPayload(failedRequest!)}>Повторить тот же запрос</button>}</div>}
         {!error && !loading && failedRequest && <div className="status"><p>Предыдущий запрос не завершён. Ответы и внесённые правки сохранены в этой вкладке.</p><button className="secondary-button" type="button" onClick={() => void sendPayload(failedRequest!)}>Повторить тот же запрос</button></div>}
         {notice && <p className="status" role="status">{notice}</p>}
         {current && <article className="answer"><img className="document-logo" src={COMPANY_LOGO_URL} width={1672} height={941} alt="Логотип СВОИ ЛЮДИ на документе" /><div className="answer-heading"><span className="answer-dot" /><h3>Ответ помощника</h3></div><label className="field-label version-label" htmlFor="document-version">Сохранённая версия</label><select id="document-version" value={current.id} onChange={(event) => setWorkspace((value) => ({ ...value, activeDocumentId: event.target.value }))}>{versions.map((version, index) => <option key={version.id} value={version.id}>Версия {index + 1} · {new Date(version.createdAt).toLocaleString("ru-RU")} · {version.prompt.slice(0, 48)}</option>)}</select><div ref={documentContent}><DocumentEditor document={current.document} onEdit={editCell} calculate={current.calculation !== "none"} /></div>
           <div className="estimate-edit-actions">{currentCalculation?.hasCalculation && <p>Меняйте поля таблицы или карточек. Единицы измерения сохраняются; суммы рассчитываются автоматически. Неизвестная цена требует уточнения.</p>}<button className="primary-button" type="button" disabled={requestBusy} onClick={requestRevision}>{selectedMode.revisionLabel}</button></div>
-          <div className="action-row"><button className="secondary-button" type="button" disabled={exportBusy} onClick={() => void downloadBrandedDocument()}>{exportBusy ? "Готовлю файл с логотипом…" : "Скачать документ с логотипом"}</button><button className="secondary-button" type="button" onClick={copyAnswer}>Копировать ответ</button><button className="secondary-button" type="button" onClick={() => download(brandedMarkdown(serializeEstimateDocument(current.document, current.calculation !== "none"), window.location.origin), `builder-${workspace.mode}.md`, "text/markdown;charset=utf-8")}>Скачать текст</button><button className="secondary-button" type="button" onClick={snapshot}>Сохранить отдельную версию</button></div></article>}
+          <div className="action-row"><button className="secondary-button" type="button" disabled={exportBusy} onClick={() => void downloadBrandedDocument()}>{exportBusy ? "Готовлю HTML с логотипом…" : "Скачать HTML с логотипом"}</button><button className="secondary-button" type="button" onClick={copyAnswer}>Копировать ответ</button><button className="secondary-button" type="button" onClick={() => download(brandedMarkdown(serializeEstimateDocument(current.document, current.calculation !== "none"), window.location.origin), `builder-${workspace.mode}.md`, "text/markdown;charset=utf-8")}>Скачать Markdown</button><button className="secondary-button" type="button" onClick={snapshot}>Сохранить отдельную версию</button></div></article>}
         {messages.length > 0 && <details className="conversation-history"><summary>История вкладки ({messages.length})</summary>{messages.map((item) => <div className="history-message" key={item.id}><strong>{item.role === "user" ? "Вы" : "Помощник"}</strong><p>{item.content}</p>{item.documentId && versions.some((version) => version.id === item.documentId) && <button className="secondary-button" type="button" onClick={() => setWorkspace((value) => ({ ...value, activeDocumentId: item.documentId! }))}>Открыть сохранённый ответ</button>}</div>)}</details>}
       </section>
     </>}
-    <section className="panel storage-panel" style={auth?.authenticated && workspace.mode === "business" && businessView === "accounting" ? { display: "none" } : undefined}><h2>Сохранение проекта</h2><p>Диалог, версии и правки сохраняются в браузере и автоматически отправляются в подключённый Google Drive. Статус облачной копии показан ниже. Экспорт файла остаётся резервным способом сохранения.</p>{storageError && <p className="error-box" role="alert">{storageError}</p>}<div className="action-row"><button type="button" className="secondary-button" disabled={!hydrated} onClick={() => { try { const content = storageBlocked ? window.localStorage.getItem(WORKSPACE_STORAGE_KEY) ?? JSON.stringify(workspace) : JSON.stringify(workspace); download(content, "builder-workspace.json", "application/json"); } catch { setStorageError("Не удалось экспортировать данные браузера."); } }}>Экспортировать проект</button><label className="secondary-button import-button">Восстановить из файла<input aria-label="Восстановить проект из файла" type="file" accept="application/json,.json" disabled={requestBusy || !hydrated} onChange={importWorkspace} /></label><button type="button" className="secondary-button" disabled={requestBusy || !hydrated} onClick={clearWorkspace}>Очистить локальные данные</button></div></section>
+    <WorkspaceStoragePanel authenticated={auth?.authenticated === true} unavailable={workspace.mode === "business" && businessView === "accounting"} hydrated={hydrated} projectBusy={requestBusy || sessionBusy} storageError={storageError} onExport={exportWorkspace} onImport={importWorkspace} onClear={clearWorkspace} />
     {auth?.authenticated && hydrated && !storageBlocked && <DriveConnection workspace={workspace} onRestore={setWorkspace} onRegister={controller => { cloud.current = controller; }} />}
     <footer className="footer">Проверяйте исходные данные, цены и технические требования перед выполнением работ. Расчёты несущих конструкций требуют проверки специалистом.</footer>
   </main>;

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { MAX_BODY_BYTES, MAX_REPLY_LENGTH } from "@/lib/chat-contract";
-import { parseEstimateDocument, serializeEstimateDocument } from "@/lib/estimate";
+import { parseEstimateDocument, prepareEstimateForClient, serializeEstimateDocument } from "@/lib/estimate";
 import { getAccessConfig, readSession } from "@/lib/server/auth";
 import { buildInstructions, ensureScaffoldRows, extractCompletedOutput, hasBrokenEstimateMarkdown, hasRequiredEstimateSections, isEstimateRequest, isFacadeRequest, requestedFacadeOptions, requiresFullEstimate, validateChatRequest } from "@/lib/server/chat";
 import { BodyError, errorResponse, isSameOriginWrite, readJsonBody } from "@/lib/server/http";
@@ -56,7 +56,8 @@ export async function POST(request: Request) {
     }
     const estimate = isEstimateRequest(body);
     const withScaffold = estimate && isFacadeRequest(body) ? ensureScaffoldRows(raw) : raw;
-    const document = parseEstimateDocument(withScaffold);
+    const parsed = parseEstimateDocument(withScaffold);
+    const document = estimate ? prepareEstimateForClient(parsed) : parsed;
     // Browser and API share precisely the same calculation/serialization path.
     const reply = estimate && document.blocks.some((block) => block.type === "table") ? serializeEstimateDocument(document) : withScaffold;
     return NextResponse.json({ reply, calculation: estimate ? "estimate" : "none", memory: memoryStatus(memory) }, { headers: { "Cache-Control": "no-store" } });

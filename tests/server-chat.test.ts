@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildInstructions, ensureScaffoldRows, extractCompletedOutput, hasBrokenEstimateMarkdown, hasRequiredEstimateSections, requestedFacadeOptions, requiresFullEstimate, resolveFacadeOptions, validateChatRequest } from "../lib/server/chat";
+import { buildInstructions, ensureScaffoldRows, extractCompletedOutput, facadeIntent, hasBrokenEstimateMarkdown, hasRequiredEstimateSections, isFacadeRequest, requestedFacadeOptions, requiresFullEstimate, resolveFacadeOptions, validateChatRequest } from "../lib/server/chat";
 import { BodyError, isSameOriginWrite, readJsonBody } from "../lib/server/http";
 import { MAX_BODY_BYTES, MAX_HISTORY_BYTES, MAX_MESSAGE_LENGTH } from "../lib/chat-contract";
 import { parseEstimateDocument, serializeEstimateDocument } from "../lib/estimate";
@@ -26,6 +26,24 @@ test("comparison in either order and explicit facade selection", () => {
   assert.doesNotMatch(instructions, /только вариант без/);
   assert.match(instructions, /ПУСТЫМИ/);
   assert.doesNotMatch(instructions, /Неизвестные значения указывай как/);
+});
+
+test("explicit non-facade and new-task messages do not inherit facade context", () => {
+  const history = [{ role: "user" as const, content: "Рассчитай фасад с утеплением" }];
+  assert.equal(facadeIntent("Это не фасад, а кровля"), "non-facade");
+  assert.equal(facadeIntent("Это работа не по фасаду, а по кровле"), "non-facade");
+  assert.equal(facadeIntent("Задача не относится к фасаду"), "non-facade");
+  assert.equal(facadeIntent("Фасад не нужен, составь смету кровли"), "non-facade");
+  assert.equal(facadeIntent("Фасад сюда не относится, нужна смета кровли"), "non-facade");
+  assert.equal(facadeIntent("Нужен не только фасад, но и кровля"), "facade");
+  assert.equal(isFacadeRequest({ message: "Это не фасад, посчитай кровлю", mode: "facade", history }), false);
+  assert.equal(isFacadeRequest({ message: "Фасад не нужен, составь смету кровли", mode: "facade", history }), false);
+  assert.equal(isFacadeRequest({ message: "Новая задача: рассчитай навес 5 на 3", mode: "general", history }), false);
+  assert.equal(isFacadeRequest({ message: "А теперь новая задача: рассчитай кровлю", mode: "general", history }), false);
+  assert.equal(isFacadeRequest({ message: "Перейдём к другой задаче: навес", mode: "general", history }), false);
+  assert.equal(requestedFacadeOptions({ message: "Новая задача: рассчитай навес", mode: "general", history }), "auto");
+  assert.equal(isFacadeRequest({ message: "Поменяй площадь на 80", mode: "general", history }), true);
+  assert.equal(isFacadeRequest({ message: "Поменяй площадь на 80", mode: "general", history: [{ role: "assistant", content: "Ранее обсуждался фасад" }] }), false);
 });
 
 test("six existing modes remain valid and history roles are bounded", () => {
@@ -74,10 +92,26 @@ test("scaffold does not change unrelated tables or add guessed quantities", () =
   assert.equal(ensureScaffoldRows(`## Материалы\n${table}`), `## Материалы\n${table}`);
   const existing = table.replace("Монтаж панелей", "Монтаж и демонтаж строительных лесов");
   assert.equal(ensureScaffoldRows(`## Работы\n${existing}`), `## Работы\n${existing}`);
+  const partialExisting = table.replace("Монтаж панелей", "Установка строительных лесов");
+  assert.equal(ensureScaffoldRows(`## Работы\n${partialExisting}`), `## Работы\n${partialExisting}`);
+  const withoutOuterPipes = existing.split("\n").map(line => line.replace(/^\|\s?/, "").replace(/\s?\|$/, "")).join("\n");
+  assert.equal(ensureScaffoldRows(`## Работы\n${withoutOuterPipes}`), `## Работы\n${withoutOuterPipes}`);
+  const wheelStops = table.replace("Монтаж панелей", "Монтаж колесоотбойников");
+  const withRequiredScaffold = ensureScaffoldRows(`## Работы\n${wheelStops}`);
+  assert.match(withRequiredScaffold, /Монтаж колесоотбойников/);
+  assert.equal((withRequiredScaffold.match(/Монтаж и демонтаж строительных лесов/g) ?? []).length, 1);
   const added = ensureScaffoldRows(`## Работы\n${table}`).split("\n").find((line) => line.includes("Монтаж и демонтаж"))!;
   assert.match(added, /^\|  \| Монтаж и демонтаж строительных лесов \|  \|  \|  \|  \| Уточнить/);
   const example = `\`\`\`markdown\n~~~\n## Работы\n${table}\n~~~\n\`\`\``;
   assert.equal(ensureScaffoldRows(example), example);
+});
+
+test("estimate instructions separate dimensions and keep internal pricing out of customer output", () => {
+  const instructions = buildInstructions({ message: "Составь смету", mode: "estimate" });
+  assert.match(instructions, /Ширину, высоту, глубину, количество и длину не объединяй/);
+  assert.match(instructions, /Базовая цена за единицу/);
+  assert.match(instructions, /не называй внутренний коэффициент/);
+  assert.doesNotMatch(instructions, /надбавк\w*\s+руководител|руководительск\w*\s+надбавк/iu);
 });
 
 test("only complete non-refusal provider responses become successful replies", () => {

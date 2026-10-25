@@ -8,6 +8,23 @@ const OUTBOX_PREFIX = `${CLOUD_STORAGE_KEY}.pending.`;
 type Dependencies = { storage: CloudStorage; fetch: typeof fetch; getWorkspace: () => Workspace; restore: (workspace: Workspace) => void; notify: (state: AutosaveState) => void };
 type CloudReply = CloudIndex & { snapshot?: Snapshot; revision?: Revision; ticket?: string };
 class RequestError extends Error { constructor(message: string, public code: string) { super(message); } }
+function outboxKeys(storage: CloudStorage): string[] {
+  return Array.from({ length: storage.length }, (_, index) => storage.key(index))
+    .filter((key): key is string => Boolean(key?.startsWith(OUTBOX_PREFIX)));
+}
+function hasPauseMarker(storage: CloudStorage): boolean {
+  const raw = storage.getItem(CLOUD_STORAGE_KEY);
+  if (!raw) return false;
+  try {
+    const value = JSON.parse(raw) as Partial<Journal>;
+    return value.version === 1 && value.paused === true;
+  } catch { return false; }
+}
+/** Remove every local payload while retaining only a pause marker; cloud snapshots remain immutable in Drive. */
+export function clearDriveAutosaveLocalData(storage: CloudStorage): void {
+  storage.setItem(CLOUD_STORAGE_KEY, JSON.stringify({ version: 1, paused: true } satisfies Journal));
+  for (const key of outboxKeys(storage)) storage.removeItem(key);
+}
 /** One queued operation, durable before network writes. The cloud consists of immutable, linked snapshots. */
 export class DriveAutosave {
   private journal: Journal = { version: 1 };
@@ -33,16 +50,28 @@ export class DriveAutosave {
     this.status = status;
     if (!this.disposed) this.deps.notify({ status, message, ...this.index });
   }
-  private persist() {
+  private adoptExternalPause(): boolean {
+    if (this.journal.paused) return true;
+    if (!hasPauseMarker(this.deps.storage)) return false;
+    this.generation++;
+    this.journal = { version: 1, paused: true };
+    clearTimeout(this.timer);
+    this.emit("paused", "Автосохранение приостановлено после очистки локальных данных в другой вкладке. Облачные версии сохранены.");
+    return true;
+  }
+  private persist(resuming = false): boolean {
+    // A pause marker is shared by every open tab and cannot be overwritten by a stale in-memory journal.
+    if (!resuming && this.adoptExternalPause()) return false;
     // Each operation has its own durable record: another tab cannot overwrite its payload/ticket.
     if (this.journal.pending) this.deps.storage.setItem(OUTBOX_PREFIX + this.journal.pending.snapshot.operationId, JSON.stringify(this.journal.pending));
     const { pending: _pending, ...baseline } = this.journal;
     this.deps.storage.setItem(CLOUD_STORAGE_KEY, JSON.stringify(baseline));
+    return true;
   }
   private recoverPending() {
     if (this.journal.pending) return;
     const storage = this.deps.storage;
-    const keys = Array.from({ length: storage.length }, (_, i) => storage.key(i)).filter((key): key is string => Boolean(key?.startsWith(OUTBOX_PREFIX))).sort();
+    const keys = outboxKeys(storage).sort();
     if (!keys.length) return;
     const raw = storage.getItem(keys[0]);
     if (!raw) return;
@@ -67,6 +96,7 @@ export class DriveAutosave {
     return data as CloudReply;
   }
   private failure(error: unknown) {
+    if (this.adoptExternalPause()) return;
     const code = error instanceof RequestError ? error.code : "unavailable";
     this.emit(code === "authorization_required" ? "authorization_required" : "error", error instanceof Error ? error.message : "Изменения остаются в браузере. Drive пока недоступен.");
     if (!["authorization_required", "login_required", "integrity", "history_damaged", "history_limit", "invalid_ticket"].includes(code)) {
@@ -74,40 +104,44 @@ export class DriveAutosave {
     }
   }
   private schedule(delay = 2500) {
-    if (this.disposed || this.journal.paused) return;
+    if (this.disposed || this.adoptExternalPause()) return;
     clearTimeout(this.timer);
     this.timer = setTimeout(() => { void this.sync(); }, delay);
   }
   changed() {
     this.generation++;
-    if (this.journal.restoreOnResume) { this.journal.restoreOnResume = false; try { this.persist(); } catch (error) { this.failure(error); return; } }
-    if (this.journal.paused || this.status === "conflict" || this.status === "authorization_required") return;
+    if (this.adoptExternalPause()) return;
+    if (this.journal.restoreOnResume) { this.journal.restoreOnResume = false; try { if (!this.persist()) return; } catch (error) { this.failure(error); return; } }
+    if (this.status === "conflict" || this.status === "authorization_required") return;
     this.emit("saving", "Изменения сохранены в браузере. Ожидаю автосохранения в Drive…");
     this.schedule();
   }
   private async adopt(data: CloudReply, expectedGeneration: number): Promise<boolean> {
-    if (!data.snapshot || !data.revision || this.generation !== expectedGeneration || this.disposed) return false;
+    if (!data.snapshot || !data.revision || this.generation !== expectedGeneration || this.disposed || this.adoptExternalPause()) return false;
     const workspace = decodeWorkspace(JSON.stringify(data.snapshot.workspace));
     // Store locally before replacing the visible state. If quota blocks this, preserve the screen.
     const hash = await workspaceHash(workspace);
-    if (this.generation !== expectedGeneration || this.disposed) return false;
+    if (this.generation !== expectedGeneration || this.disposed || this.adoptExternalPause()) return false;
     saveWorkspace(this.deps.storage, workspace);
     this.journal.base = data.revision.id; this.journal.hash = hash;
     this.journal.restoreOnResume = false; this.persist(); this.deps.restore(workspace); return true;
   }
   private async uploadPending(): Promise<CloudReply | undefined> {
+    if (this.adoptExternalPause()) return;
     const pending = this.journal.pending;
     if (!pending) return;
-    this.persist();
+    if (!this.persist()) return;
     this.emit("saving", "Сохраняю проект в Google Drive…");
     if (!pending.ticket) {
       const reserved = await this.request({ action: "reserve", snapshot: pending.snapshot });
+      if (this.adoptExternalPause()) return;
       if (!reserved.ticket) throw new Error("Drive не подготовил задание сохранения.");
       pending.ticket = reserved.ticket;
       // Never send an upload until the allocated ID and exact payload are durable in this browser.
-      this.persist();
+      if (!this.persist()) return;
     }
     const data = await this.request({ action: "save", ticket: pending.ticket, snapshot: pending.snapshot });
+    if (this.adoptExternalPause()) return;
     if (!data.revision) throw new Error("Drive не подтвердил сохранённую версию.");
     this.index = { heads: data.heads, revisions: data.revisions };
     this.journal.base = data.revision.id; this.journal.hash = await workspaceHash(pending.snapshot.workspace);
@@ -116,7 +150,7 @@ export class DriveAutosave {
   }
   private async performSync() {
     if (this.disposed || this.busy) return;
-    if (this.journal.paused) { this.emit("paused", "Автосохранение приостановлено после очистки локальных данных. Облачные версии сохранены."); return; }
+    if (this.adoptExternalPause()) { this.emit("paused", "Автосохранение приостановлено после очистки локальных данных. Облачные версии сохранены."); return; }
     this.busy = true;
     try {
       if (typeof navigator !== "undefined" && navigator.onLine === false) { this.emit("offline", "Нет интернета. Изменения сохранены в браузере и отправятся при восстановлении связи."); return; }
@@ -129,6 +163,7 @@ export class DriveAutosave {
       if (this.journal.pending) { this.schedule(1000); return; }
       if (this.disposed || this.journal.paused) return;
       const data = await this.request({ action: "load" });
+      if (this.adoptExternalPause()) return;
       this.index = { heads: data.heads, revisions: data.revisions };
       this.ready = true;
       const localGeneration = this.generation;
@@ -170,11 +205,12 @@ export class DriveAutosave {
   }
   /** Explicit recovery creates a new version with every current branch as a parent. */
   private async performRestore(id: string) {
-    if (this.busy || this.disposed || this.journal.pending) return;
+    if (this.busy || this.disposed || this.journal.pending || this.adoptExternalPause()) return;
     this.busy = true; const generation = this.generation;
     try {
       this.emit("checking", "Восстанавливаю выбранную версию…");
       const data = await this.request({ action: "load", id });
+      if (this.adoptExternalPause()) return;
       if (!data.snapshot || !data.revision || this.generation !== generation) throw new Error("Во время восстановления появились новые правки. Они сохранены локально; повторите выбор версии.");
       // Preserve even unsent current edits as an immutable snapshot before a recovery replaces the screen.
       if (await workspaceHash(this.deps.getWorkspace()) !== this.journal.hash) {
@@ -182,6 +218,7 @@ export class DriveAutosave {
         await this.uploadPending();
       }
       const current = await this.request({ action: "load" });
+      if (this.adoptExternalPause()) return;
       if (this.generation !== generation) throw new Error("Появились новые правки. Повторите восстановление.");
       this.journal.pending = { snapshot: decodeSnapshot({ schemaVersion: 1, operationId: crypto.randomUUID(), parents: current.heads.map(r => r.id), workspace: data.snapshot.workspace }) }; this.persist();
       const saved = await this.uploadPending();
@@ -192,8 +229,14 @@ export class DriveAutosave {
     } catch (error) { if (!this.disposed) this.failure(error); }
     finally { this.busy = false; }
   }
-  pause() { this.journal.paused = true; this.persist(); clearTimeout(this.timer); this.emit("paused", "Локальные данные очищены. Облачные версии сохранены; автосохранение приостановлено."); }
-  resume() { try { this.journal.paused = false; this.journal.restoreOnResume = true; this.persist(); void this.sync(); } catch (error) { this.failure(error); } }
+  pause() {
+    clearDriveAutosaveLocalData(this.deps.storage);
+    this.generation++;
+    this.journal = { version: 1, paused: true };
+    clearTimeout(this.timer);
+    this.emit("paused", "Локальные данные и очередь отправки очищены. Облачные версии сохранены; автосохранение приостановлено.");
+  }
+  resume() { try { this.journal.paused = false; this.journal.restoreOnResume = true; this.persist(true); void this.sync(); } catch (error) { this.failure(error); } }
   isBusy() { return this.busy; }
   canRestore() { return this.ready && !this.busy && !this.journal.pending; }
   dispose() { this.disposed = true; this.lifetime.abort(); clearTimeout(this.timer); }

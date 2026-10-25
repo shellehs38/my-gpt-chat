@@ -16,7 +16,7 @@ test("ordinary follow-up includes an edited selected snapshot and bounded contex
   const payload = buildChatPayload(workspace, "Теперь площадь 200 м²");
   assert.match(payload.history.at(-1)!.content, /Панель \| м² \| 2 \| 0,10 \| 0,20/);
   assert.match(payload.history.at(-1)!.content, /Сохранить примечание/);
-  assert.match(payload.history.at(-1)!.content, /не пересчитанный итог/);
+  assert.match(payload.history.at(-1)!.content, /Исходный текстовый итог удалён после пересчёта/);
   workspace.documents = [];
   workspace.messages = Array.from({ length: 30 }, (_, index) => ({ id: String(index), role: index % 2 ? "assistant" as const : "user" as const, content: "ж".repeat(50000) }));
   const bounded = buildChatPayload(workspace, "Следующий вопрос").history;

@@ -1,11 +1,31 @@
 {
-  "baseCommit": "2cc70c27baf847f27168fa4f446bc29422893c14",
-  "cleanInstall": "passed",
+  "version": "1.4.0",
+  "baseCommit": "35d3b0f7f45ec08f38b24aa3d2bd1a10088a9e08",
+  "checkedAtUTC": "2026-10-26T00:25:26Z",
+  "cleanInstall": "passed (npm ci from package-lock.json)",
   "typecheck": "passed (next typegen + tsc --noEmit)",
   "productionBuild": "passed (Next.js 15.5.28)",
-  "unitTests": 29,
-  "unitTestsPassed": 29,
+  "tests": {
+    "typescriptFiles": 16,
+    "typescriptTests": 128,
+    "calculatorFiles": 10,
+    "calculatorTests": 144,
+    "nodeTestsTotal": 272,
+    "pythonMemoryTests": 4,
+    "passed": true
+  },
+  "codebaseMemory": {
+    "version": "0.12.1",
+    "tools": 17,
+    "indexedNodes": 1741,
+    "indexedEdges": 6223,
+    "parseUnusable": 0,
+    "actualMcpJsonRpc": true,
+    "adrSurvivesSessionRestart": true,
+    "passed": true
+  },
   "productionDependencyAudit": {
+    "mode": "offline",
     "info": 0,
     "low": 0,
     "moderate": 0,
@@ -13,40 +33,62 @@
     "critical": 0,
     "total": 0
   },
+  "pricingAndEstimates": {
+    "baseWorkPricePreparedForCustomerOnce": true,
+    "materialsAndDirectCostsUnchanged": true,
+    "alreadyFinalPricesUnchanged": true,
+    "staleNarrativeMoneyRemovedOnce": true,
+    "technicalTotalsPreserved": true,
+    "tableArithmeticRemainsSourceOfTruth": true,
+    "negativeFacadeIntentRespected": true,
+    "newTaskResetsFacadeContext": true,
+    "scaffoldWorkNotDuplicated": true,
+    "markdownTablesWithoutOuterPipesSupported": true
+  },
+  "privacyAndRecovery": {
+    "controlsHiddenBeforeLogin": true,
+    "ordinaryLogoutPreservesProject": true,
+    "ordinaryLogoutPersistsImmediateDraft": true,
+    "expiredSessionPersistsDraftAndRetry": true,
+    "unreadableBackupSurvivesOrdinaryLogout": true,
+    "newProjectProtectsInactiveModeDrafts": true,
+    "localClearRemovesWorkspaceAndLedgerPending": true,
+    "localClearRemovesAllDriveOutboxes": true,
+    "logoutAndClearRemovesWorkspaceLedgerAndDriveOutboxes": true,
+    "crossTabDrivePause": true,
+    "inFlightDriveReserveCancelledBeforeSave": true,
+    "cloudHistoryRetainedOnLocalClear": true
+  },
   "browser": {
     "fixturesOnly": true,
-    "paidModelCalls": 0,
-    "variantIsolation": true,
-    "unitsBothLayouts": true,
-    "copyExportCurrentValues": true,
-    "desktopEditing": true,
-    "reloadPreservesEdits": true,
-    "snapshotContext": true,
-    "exactFailedRetry": true,
-    "corruptStoragePreservedAndExported": true,
-    "quotaFailureWarns": true,
-    "requestsCaptured": 4
+    "passed": true,
+    "widths": [390, 1440],
+    "horizontalOverflow": false,
+    "mobileMessageTopPx": 650.90625,
+    "savedDocumentShownAfterLogin": true,
+    "robotsDisallowAll": true,
+    "pageErrors": []
   },
-  "recovery": {
-    "backupRestore": true,
-    "invalidImportPreservesExistingProject": true,
-    "failedRequestRestoredAfterReload": true,
-    "restoredRetryMatchesOriginalPayload": true,
-    "realModelCalls": 0
+  "verifiedResponseHeaders": [
+    "Content-Security-Policy",
+    "Cross-Origin-Opener-Policy",
+    "Cross-Origin-Resource-Policy",
+    "Permissions-Policy",
+    "Strict-Transport-Security",
+    "X-Content-Type-Options",
+    "X-Robots-Tag"
+  ],
+  "routeSmoke": {
+    "facadeCalculator": 200,
+    "facadeCatalog": 200,
+    "materialsGuide": 200,
+    "projectMemory": 200,
+    "robots": 200
   },
-  "productionSmoke": {
-    "productionBoot": true,
-    "unauthedChatDenied": true,
-    "ownerLogin": true,
-    "signedSessionAccepted": true,
-    "missingProviderKeyDenied": true,
-    "crossOriginLoginDenied": true,
-    "canonicalHostProxyCheck": true,
-    "secureHttpOnlyCookie": true,
-    "realModelCalls": 0
-  },
+  "brandResourcePolicy": "cross-origin",
   "realModelCalls": 0,
-  "storage": "local browser only, JSON backup export/import",
-  "rateLimit": "per-process, owner-gated; distributed hosting/provider limit required for shared budget",
-  "deployment": "not asserted from local build; verify GitHub/Vercel status separately"
+  "realGoogleWrites": 0,
+  "storage": "local browser copy, immutable Google Drive autosave when connected, and JSON backup export/import",
+  "rateLimit": "per-process, owner-gated; distributed hosting/provider limit is still required for a shared budget",
+  "deployment": "not asserted by this local record; verify GitHub/Vercel status and production commit separately"
 }
