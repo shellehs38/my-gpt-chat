@@ -44,14 +44,16 @@ test("document and sales tables never acquire a calculated sum column or summary
   assert.doesNotMatch(output, /Сумма, руб\. \(расчёт\)|Арифметический|не пересчитанный итог/);
 });
 
-test("legacy/default estimate serialization still recalculates exact sums and marks stale prose", () => {
+test("legacy/default estimate serialization recalculates exact sums and removes stale prose once", () => {
   const document = parseEstimateDocument(contract);
   const implicit = serializeEstimateDocument(document);
   const explicit = serializeEstimateDocument(document, true);
   assert.equal(implicit, explicit);
   assert.match(implicit, /Комплект работ \| 2 \| 10000 \| 20 000,00/);
   assert.match(implicit, /Арифметический итог: 20 000,00/);
-  assert.match(implicit, /Пояснение исходного ответа, не пересчитанный итог/);
+  assert.equal((implicit.match(/Исходный текстовый итог удалён/g) ?? []).length, 1);
+  assert.doesNotMatch(implicit, /19500/);
+  assert.match(implicit, /Оплата по согласованным условиям/);
   const noSum = parseEstimateDocument("| Наименование | Количество | Цена |\n| --- | --- | --- |\n| Материал | 3 | 0,10 |");
   assert.match(serializeEstimateDocument(noSum), /Сумма, руб\. \(расчёт\)/);
   assert.match(serializeEstimateDocument(noSum), /0,30/);

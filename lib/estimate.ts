@@ -94,7 +94,7 @@ export function tableColumns(table: EstimateTable): { quantityIndex: number; pri
   const headers = table.headers.map((value) => plain(value).toLowerCase().replace(/ё/g, "е"));
   return {
     quantityIndex: headers.findIndex((name) => /^(количество|кол[- ]?во|объем)(\b|[\s,.(/]|$)/u.test(name) || /^(количество|кол[- ]?во|объем)$/u.test(name)),
-    priceIndex: headers.findIndex((name) => /^(цена|расценка|стоимость за|стоимость ед)/u.test(name)),
+    priceIndex: headers.findIndex((name) => /^(?:базовая\s+)?(?:цена|расценка|ставка|стоимость за|стоимость ед)/u.test(name)),
     sumIndex: headers.findIndex((name) => /^(сумма|стоимость|итого)([\s,.(]|$)/u.test(name) && !/за|единиц|ед\./u.test(name)),
   };
 }
@@ -123,6 +123,7 @@ export function formatKopecks(value: string): string {
   const rubles = (integer / BigInt(100)).toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ");
   return `${rubles},${(integer % BigInt(100)).toString().padStart(2, "0")}`;
 }
+
 export function calculateEstimateDocument(document: EstimateDocument): CalculatedDocument {
   const tables = document.blocks.filter((block): block is EstimateTable => block.type === "table").map((table): CalculatedTable => {
     const columns = tableColumns(table);
@@ -168,18 +169,36 @@ export function displayedCell(row: EstimateRow, cellIndex: number, table: Calcul
 function escapeCell(value: string): string {
   return value.replace(/\r?\n/g, " ").replace(/(?<!\\)\|/g, "\\|");
 }
-export function formatEstimateProse(text: string, hasCalculation: boolean): string {
+type ProseNoticeState = { noticeAdded: boolean };
+export function formatEstimateProse(text: string, hasCalculation: boolean, sharedState: ProseNoticeState = { noticeAdded: false }): string {
   if (!hasCalculation) return text;
-  return text.split("\n").map((line) => /^\s*(?:[-*>]\s*)?\*{0,2}(?:итог(?:о)?|всего|общий итог|общая стоимость|сумма материалов|сумма работ|стоимость (?:всех|материалов|работ))[^\n]*\d/iu.test(line)
-    ? `> Пояснение исходного ответа, не пересчитанный итог: ${line.replace(/^\s*>\s*/, "")}` : line).join("\n");
+  const explicitMoneyTotal = /(?:итоговая (?:стоимость|сумма)|общая (?:стоимость|сумма|цена)|сумма (?:материалов|работ)|стоимость (?:всех|материалов|работ|проекта)|к оплате)/iu;
+  const genericTotal = /(?:^|[^\p{L}])(?:итог(?:о)?|всего(?: к оплате)?|общий итог)(?=[^\p{L}]|$)/iu;
+  const arithmetic = /\d[\d\s.,]*\s*(?:\+|[-−–—/÷×*])\s*\d[\d\s.,]*\s*=\s*\d/iu;
+  const monetaryContext = /(?:₽|руб(?:\.|\p{L}*)?)(?=[^\p{L}]|$)|(?:цен|стоимост|сумм)\p{L}*(?=[^\p{L}]|$)/iu;
+  const isStaleTotal = (value: string) => {
+    const hasNumber = /\d/u.test(value);
+    const hasMoney = monetaryContext.test(value);
+    return hasNumber && (explicitMoneyTotal.test(value) || genericTotal.test(value) && hasMoney)
+      || arithmetic.test(value) && hasMoney;
+  };
+  return text.split("\n").map((line) => {
+    if (!isStaleTotal(line)) return line;
+    const sentences = line.split(/(?<=[.!?;])\s+(?=[\p{L}*_#>])/u);
+    const retained = sentences.length > 1 ? sentences.filter((sentence) => !isStaleTotal(sentence)).join(" ") : "";
+    const notice = sharedState.noticeAdded ? "" : "> Исходный текстовый итог удалён после пересчёта; актуальные суммы приведены в таблицах.";
+    sharedState.noticeAdded = true;
+    return [notice, retained].filter(Boolean).join("\n");
+  }).join("\n");
 }
 /** Calculation can be disabled for contracts/advisory tables whose agreed values must remain verbatim. */
 export function serializeEstimateDocument(document: EstimateDocument, calculate = true): string {
   const calculated = calculate ? calculateEstimateDocument(document) : undefined;
+  const proseState: ProseNoticeState = { noticeAdded: false };
   return document.blocks.map((block) => {
     if (block.type === "markdown") {
       // A model's prose total cannot remain authoritative after table edits.
-      return formatEstimateProse(block.text, calculated?.hasCalculation ?? false);
+      return formatEstimateProse(block.text, calculated?.hasCalculation ?? false, proseState);
     }
     const table = calculated?.tables.find((item) => item.tableId === block.id);
     const needsSum = Boolean(table?.hasCalculation && table.sumIndex < 0);

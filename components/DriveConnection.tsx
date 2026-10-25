@@ -4,8 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { DriveAutosave, type AutosaveState } from "@/lib/drive-autosave";
 import type { Workspace } from "@/lib/workspace-storage";
 
-type Props = { workspace: Workspace; onRestore: (workspace: Workspace) => void; onRegister: (controller: DriveAutosave | null) => void };
-export default function DriveConnection({ workspace, onRestore, onRegister }: Props) {
+type Props = { workspace: Workspace; onRestore: (workspace: Workspace) => void; onRegister: (controller: DriveAutosave | null) => void; onUnauthorized: () => void };
+export default function DriveConnection({ workspace, onRestore, onRegister, onUnauthorized }: Props) {
   const [state, setState] = useState<AutosaveState>({ status: "checking", message: "Проверяю автосохранение…", heads: [], revisions: [] });
   const [authorizing, setAuthorizing] = useState(false);
   const engine = useRef<DriveAutosave | null>(null);
@@ -13,12 +13,14 @@ export default function DriveConnection({ workspace, onRestore, onRegister }: Pr
   const previous = useRef(workspace);
   const restore = useRef(onRestore);
   const register = useRef(onRegister);
-  useEffect(() => { latest.current = workspace; restore.current = onRestore; register.current = onRegister; });
+  const unauthorized = useRef(onUnauthorized);
+  useEffect(() => { latest.current = workspace; restore.current = onRestore; register.current = onRegister; unauthorized.current = onUnauthorized; });
   useEffect(() => {
     let controller: DriveAutosave;
     try {
       controller = new DriveAutosave({ storage: window.localStorage, fetch: (...args) => fetch(...args), getWorkspace: () => latest.current,
-        restore: value => { latest.current = value; previous.current = value; restore.current(value); }, notify: setState });
+        restore: value => { latest.current = value; previous.current = value; restore.current(value); }, notify: setState,
+        onUnauthorized: () => unauthorized.current() });
     } catch (error) { setState(previous => ({ ...previous, status: "error", message: error instanceof Error ? error.message : "Хранилище браузера недоступно. Экспортируйте проект." })); return; }
     engine.current = controller; register.current(controller); void controller.sync();
     const retry = () => { if (document.visibilityState !== "hidden") void controller.sync(); };
@@ -35,6 +37,7 @@ export default function DriveConnection({ workspace, onRestore, onRegister }: Pr
     try {
       const response = await fetch("/api/drive/connection", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "authorize" }), cache: "no-store" });
       const data = await response.json();
+      if (response.status === 401) unauthorized.current();
       if (!response.ok || typeof data.authorizationUrl !== "string") throw new Error(data.message ?? data.error ?? "Не удалось начать подключение.");
       const url = new URL(data.authorizationUrl);
       if (url.protocol !== "https:" || url.hostname !== "connect.vercel.com" || url.port || url.username || url.password) throw new Error("Не удалось проверить адрес подключения.");

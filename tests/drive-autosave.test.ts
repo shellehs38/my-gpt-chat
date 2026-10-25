@@ -102,6 +102,26 @@ test("autosave authorization and malformed uploads are rejected before provider 
   } finally { restore(); }
 });
 
+test("Drive client reports an expired owner session once and does not schedule automatic retries", async () => {
+  const storage = new MemoryStorage(); let state: AutosaveState | undefined; let unauthorized = 0; let requests = 0;
+  const controller = new DriveAutosave({
+    storage, getWorkspace: emptyWorkspace, restore: () => undefined, notify: value => { state = value; },
+    onUnauthorized: () => { unauthorized++; },
+    fetch: async () => { requests++; return Response.json({ error: "Сессия истекла" }, { status: 401 }); },
+  });
+  try {
+    await controller.sync();
+    assert.equal(state?.status, "error");
+    assert.equal(unauthorized, 1);
+    assert.equal(requests, 1);
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal(requests, 1);
+    await controller.sync();
+    assert.equal(unauthorized, 1);
+    assert.equal(requests, 2);
+  } finally { controller.dispose(); }
+});
+
 test("immutable Drive uploads read back metadata, parent, bytes and checksum; ticket retries never duplicate", async () => {
   const restore = environment(); const drive = new FakeDrive(); const handler = provider(drive);
   try {
@@ -182,6 +202,70 @@ test("different device data is retained as a conflict, recovery preserves histor
     for (let n = 0; n < 50 && b.controller.isBusy(); n++) await new Promise(resolve => setTimeout(resolve, 1));
     assert.equal(b.workspace.draft, "cloud A"); assert.equal(drive.uploads, 3);
   } finally { devices.forEach(d => d.controller.dispose()); restore(); }
+});
+
+test("local clear removes durable Drive payloads before pausing autosave", async () => {
+  const restore = environment(); const drive = new FakeDrive(); const handler = provider(drive); const devices: ReturnType<typeof browser>[] = [];
+  try {
+    const client = browser(handler, { ...emptyWorkspace(), draft: "private unsent draft" }); devices.push(client);
+    client.loseResponse(); await client.controller.sync();
+    assert.equal(client.state.status, "error");
+    assert.equal([...client.storage.map.keys()].filter(key => key.includes(".pending.")).length, 1);
+    assert.match([...client.storage.map.values()].join("\n"), /private unsent draft/);
+
+    client.controller.pause();
+    assert.equal([...client.storage.map.keys()].filter(key => key.includes(".pending.")).length, 0);
+    assert.deepEqual(JSON.parse(client.storage.getItem(CLOUD_STORAGE_KEY)!), { version: 1, paused: true });
+    assert.doesNotMatch([...client.storage.map.values()].join("\n"), /private unsent draft/);
+
+    const reload = browser(handler, emptyWorkspace(), client.storage); devices.push(reload);
+    await reload.controller.sync();
+    assert.equal(reload.state.status, "paused");
+    assert.equal(drive.uploads, 1);
+  } finally { devices.forEach(device => device.controller.dispose()); restore(); }
+});
+
+test("a shared pause marker stops stale controllers in every open tab", async () => {
+  const restore = environment(); const drive = new FakeDrive(); const handler = provider(drive); const devices: ReturnType<typeof browser>[] = [];
+  try {
+    const storage = new MemoryStorage();
+    const first = browser(handler, { ...emptyWorkspace(), draft: "cloud baseline" }, storage); devices.push(first);
+    const staleTab = browser(handler, { ...emptyWorkspace(), draft: "old tab state" }, storage); devices.push(staleTab);
+    await first.controller.sync();
+    assert.equal(drive.uploads, 1);
+
+    first.controller.pause();
+    staleTab.edit("private edit after clear");
+    await staleTab.controller.sync();
+
+    assert.equal(staleTab.state.status, "paused");
+    assert.equal(drive.uploads, 1);
+    assert.equal([...storage.map.keys()].filter(key => key.includes(".pending.")).length, 0);
+    assert.doesNotMatch([...storage.map.values()].join("\n"), /private edit after clear|old tab state/);
+    assert.deepEqual(JSON.parse(storage.getItem(CLOUD_STORAGE_KEY)!), { version: 1, paused: true });
+  } finally { devices.forEach(device => device.controller.dispose()); restore(); }
+});
+
+test("pausing during reservation cancels the pending upload before Drive save", async () => {
+  const restore = environment(); const drive = new FakeDrive(); const handler = provider(drive);
+  const storage = new MemoryStorage(); let workspace = { ...emptyWorkspace(), draft: "clear while reserving" }; let state: AutosaveState | undefined;
+  let release!: () => void; let reserved!: () => void;
+  const blocked = new Promise<void>(resolve => { release = resolve; });
+  const started = new Promise<void>(resolve => { reserved = resolve; });
+  const controller = new DriveAutosave({ storage, getWorkspace: () => workspace, restore: value => { workspace = value; }, notify: value => { state = value; }, fetch: async (_url, init) => {
+    const body = JSON.parse(String(init?.body));
+    const response = await handler(request(body));
+    if (body.action === "reserve") { reserved(); await blocked; }
+    return response;
+  } });
+  try {
+    const running = controller.sync(); await started;
+    controller.pause(); release(); await running;
+    assert.equal(state?.status, "paused");
+    assert.equal(drive.uploads, 0);
+    assert.equal([...storage.map.keys()].filter(key => key.includes(".pending.")).length, 0);
+    assert.doesNotMatch([...storage.map.values()].join("\n"), /clear while reserving/);
+  } finally { controller.dispose(); restore(); }
 });
 
 test("another tab's unfinished outbox is recovered without replacing newer cloud data with an unchanged local copy", async () => {
