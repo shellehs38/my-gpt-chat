@@ -4,15 +4,17 @@ import {dirname,join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {catalogFamilies,insulationCatalog,catalogChecked} from '../public/facade-calculator/material-catalog.mjs';
 import {claddingSystems,systemGroups,selectSystem} from '../public/facade-calculator/system-catalog.mjs';
+import {validateAssemblyDefinition} from '../public/facade-calculator/engine.mjs';
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
-if(catalogFamilies.length!==10||claddingSystems.length!==15||!/^\d{4}-\d{2}-\d{2}$/.test(catalogChecked))throw Error('Invalid facade catalog source.');
+if(catalogFamilies.length!==10||claddingSystems.length<15||!/^\d{4}-\d{2}-\d{2}$/.test(catalogChecked))throw Error('Invalid facade catalog source.');
 const families=[...catalogFamilies,...claddingSystems.filter(s=>s.id!=='metal-siding').map(({variants,...system})=>({...system,systemId:system.id,variants:variants.map(v=>selectSystem(system.id,system.id,v.id).variant)}))];
 const systems=claddingSystems.map(({variants,families,...metadata})=>metadata);
 const ids=new Set();
 for(const card of [...families.flatMap(f=>f.variants),...insulationCatalog]){
   if(!card.id||ids.has(card.id)||!card.manufacturer||!card.name||!Array.isArray(card.sources))throw Error('Invalid or duplicate material card.');
   ids.add(card.id);
+  validateAssemblyDefinition(card);
   for(const s of card.sources){const u=new URL(s.url);if(u.protocol!=='https:'||u.username||u.password||!/^\d{4}-\d{2}-\d{2}$/.test(s.checked))throw Error('Invalid material source URL or review date.');}
 }
 const checkedAt=[catalogChecked,...families.flatMap(f=>f.variants).flatMap(v=>v.sources.map(s=>s.checked)),...insulationCatalog.flatMap(v=>v.sources.map(s=>s.checked))].sort().at(-1);
@@ -23,13 +25,17 @@ await mkdir(join(root,'data'),{recursive:true});
 await writeFile(join(root,'data/facade-material-catalog.json'),json);
 await writeFile(join(root,'public/facade-calculator/catalog.json'),json);
 const methods={frame:'На каркасе',direct:'Непосредственное механическое крепление',bonded:'Клеевое / комбинированное крепление'};
-const kinds={metal:'Металлический сайдинг',linear:'Линейные профили',panel:'Листы и модульные панели',wood:'Деревянная облицовка',thermal:'Термопанели с собственным утеплением',sandwich:'Сэндвич-панели с заводским сердечником',seam:'Фальцевая облицовка',unknown:'Тип конструкции и способ монтажа требуют уточнения'};
+const kinds={metal:'Металлический сайдинг',linear:'Линейные профили',panel:'Листы и модульные панели',wood:'Деревянная облицовка',thermal:'Термопанели с собственным утеплением',sandwich:'Сэндвич-панели с заводским сердечником',seam:'Фальцевая облицовка',eifs:'СФТК с наружными штукатурными слоями',render:'Штукатурка и покрытия по основанию',bonded:'Клеевая облицовка',masonry:'Облицовочная кладка',unknown:'Тип конструкции и способ монтажа требуют уточнения'};
 const lines=['![Подлинный логотип СВОИ ЛЮДИ](brand/logo-sl-approved-light.png)','','# Материалы фасадного калькулятора «СВОИ ЛЮДИ»','',`Последняя дата проверки источников набора: ${checkedAt}. Дата каждой карточки приведена отдельно; она не подтверждает неизменность документа на день нового заказа.`, '',
   'Каталог и справочник создаются из исходных material-catalog.mjs и system-catalog.mjs с карточками соответствующих групп. Название материала не задаёт универсальную конструкцию: производитель, конкретный продукт, тип основания и метод крепления выбираются отдельно. Параметры заказа сверяйте с паспортом и проектом.', '',
   '## Как различаются расчёты','',
   '- Для всех видов: чистая площадь = площадь стен − площадь проёмов. Готовая чистая площадь не уменьшается повторно. Откосы, отливы, углы, старт/финиш и примыкания считаются отдельно по замерам.',
   '- Линейный сайдинг и деревянные доски: количество по чистой площади и рабочему модулю (полезная ширина или шаг с согласованным швом × длина). Направление, зазоры и крепёж берутся из инструкции конкретного материала; правила металлического сайдинга не переносятся на винил, акрил, дерево или ДПК.',
   '- Листовые панели, фиброцемент, АКП, HPL, кассеты и цокольные панели: предварительная потребность по полезной площади выбранного формата. Нужны раскладка, ориентация, размеры модулей, швы, стыки и раскрой; площадь не является оптимизацией раскроя. Скрытый/видимый крепёж, кляммеры, заклёпки и состав подсистемы задаются по выбранной системе.',
+  '- СФТК: согласованный комплект клея, предусмотренной им теплоизоляции, дюбелей, армирующего состава, сетки, грунта и финиша. Плиты для навесных фасадов из отдельного каталога не заменяют утеплитель СФТК. Клеевая облицовка поверх утепления требует отдельной подтверждённой комплектной системы.',
+  '- Штукатурка по основанию и плиточные/каменные покрытия считаются по явным слоям карточки: площадь × паспортный расход; для нормы кг/м²/мм дополнительно × толщина слоя в мм, для расхода на слой — × число слоёв. Готовое покрытие в м² не делится на ширину панели.',
+  '- Облицовочный кирпич: предварительное число кирпичей = чистая площадь / ((длина кирпича + вертикальный шов) × (высота кирпича + горизонтальный шов)), после перевода миллиметров в метры. Опирание, связи, зазор, водоотведение и проёмы проверяют по проекту; площадь не определяет несущую способность.',
+  '- Витражи, стеклофибробетон, керамогранит и терракота: проектная спецификация определяет профиль, опоры, держатели, стекло/плиты, уплотнения и узлы. Вентилируемый и невентилируемый — признаки конструкции, а не два универсальных комплекта материалов.',
   '- Клеевой способ не включает металлическую подсистему автоматически. Подготовка основания, клей/пена, механическое крепление и затирка учитываются только если предусмотрены конкретным продуктом. Их расход вводится по техкарте, а не по общему названию панели.',
   '- Термопанели и сэндвич-панели содержат собственный утепляющий слой / сердечник. Дополнительные слои утепления, мембрана или облицовка не добавляются повторно по умолчанию. Для сэндвич-панелей отдельно определяют несущий каркас, опорные пролёты, крепёж, герметизацию и фасонные элементы; это не обычная сетка лёгкого сайдинга.',
   '- Фальцевая облицовка: рабочая ширина картины, длина и основание — по фасадной системе. Для представленного Кликфальца предусмотрена гвоздевая полка; универсальные кляммеры не подставляются. Кровельная инструкция не доказывает применимость на фасаде; объём и состав крепления не переносятся между применениями.',
@@ -41,6 +47,36 @@ const lines=['![Подлинный логотип СВОИ ЛЮДИ](brand/logo-
   '- Старый проект не заменяется просмотром каталога. Комплект применяется явно; новую систему для заполненной вручную сметы создают отдельным объектом по тем же замерам.',
   '- JSON проекта сохраняет выбранный состав и карточки источников. Автосохранение калькулятора — в браузере на данном устройстве; Google Drive диалога помощника не переносит проекты калькулятора автоматически.',
   '- Пустые цены и параметры остаются неизвестными. Количественный расчёт не подтверждает несущую способность, пожарные решения, применимость марки или требуемую теплотехническую толщину.', ''];
+const md=value=>String(value??'').replace(/\|/g,'\\|').replace(/\r?\n/g,' ');
+function addAssembly(card){
+  const labels=Object.fromEntries((card.assemblyFields||[]).map(f=>[f.id,f.label]));
+  const label=key=>labels[key]||key||'по проекту';
+  const unitLabels={bare:'без отдельного утепления',insulated:'с утеплением по этой системе',either:'по выбранному варианту'};
+  lines.push('**Структура калькулятора и формулы**','',`Вариант: ${unitLabels[card.scenarioMode]||'уточняется по карточке'}. А — чистая площадь без повторного вычета проёмов. Цена каждой строки соответствует её единице.`, '');
+  for(const e of card.assembly){
+    const baseArea=e.excludeAreaKey?`(${e.areaKey?'«'+label(e.areaKey)+'»':'А'} − «${label(e.excludeAreaKey)}»)`:(e.areaKey?'«'+label(e.areaKey)+'»':'А');
+    let formula;
+    if(e.mode==='area')formula=baseArea;
+    else if(e.mode==='norm')formula=`${baseArea} × «${label(e.normKey)}»${e.factorKey?` × «${label(e.factorKey)}»`:''}`;
+    else if(e.mode==='insulationVolume')formula=`${baseArea} × «${label(e.thicknessKey)}» / 1000 (толщина в мм)`;
+    else if(e.mode==='masonry')formula=`${baseArea} / ((«${label(e.lengthKey)}» + «${label(e.jointWidthKey)}») × («${label(e.heightKey)}» + «${label(e.jointHeightKey)}») / 1 000 000); размеры в мм, штуки к закупке округляются вверх`;
+    else if(e.mode==='manual')formula=`по проектной ведомости${e.quantityKey?` — «${label(e.quantityKey)}»`:''}`;
+    else formula=`по соответствующему замеру ${e.mode}`;
+    lines.push(`- ${e.material===false?'Работа':'Материал'}: **${e.name}**; ${e.unit}; количество: ${formula}.${e.optional?` Включается отдельно; по умолчанию ${e.enabledDefault?'включено':'выключено'}.`:''}${e.sourceKey?` Источник нормы / параметра: «${label(e.sourceKey)}».`:''}`);
+    if(e.packKey||e.reserveKey)lines.push(`  Закупка: ${e.reserveKey?`запас «${label(e.reserveKey)}»`:''}${e.packKey&&e.reserveKey?'; ':''}${e.packKey?`округление «${label(e.packKey)}» в единице материала`:''}.`);
+    if(e.workName)lines.push(`  Работа: ${e.workName}; ${e.workUnit||'м²'}; ${e.workMode==='norm'?` ${baseArea} × «${label(e.workNormKey||e.factorKey)}»`:e.workMode==='manual'?`по проектной ведомости «${label(e.workQuantityKey||e.quantityKey)}»`:e.workMode&&e.workMode!=='area'?`по замеру ${e.workMode}, без закупочного запаса и упаковки`:'по чистой площади операции, без закупочного запаса и упаковки'}.`);
+    if(e.areaSourceKey)lines.push(`  Источник площади участка: «${label(e.areaSourceKey)}». Выделенная площадь не может превышать площадь фасада; один участок не учитывается дважды.`);
+    if(e.techNote)lines.push(`  ${e.techNote}`);
+  }
+  lines.push('','**Поля выбранной технологии**','','| Параметр | Начальное значение / подсказка |','| --- | --- |');
+  for(const f of card.assemblyFields||[]){
+    const value=f.default!==undefined&&f.default!==''?`${f.default}${f.unit?' '+f.unit:''}`:'не задано — по выбранному продукту / проекту';
+    const extra=[f.help,f.options?.length?'Варианты: '+f.options.map(o=>o.label).join('; '):'',f.min!==undefined?'Минимум: '+f.min:'',f.max!==undefined?'Максимум: '+f.max:''].filter(Boolean).join(' ');
+    lines.push(`| ${md(f.label)} | ${md(value+(extra?' · '+extra:''))} |`);
+  }
+  lines.push('','Начальные значения относятся только к выбранному продукту и указанным источникам. Просмотр карточки и заполнение полей сами по себе не заменяют прежнюю смету; применяется явной кнопкой. Неизвестные нормы и цены остаются пустыми.','');
+  if(card.assemblyHints?.length)lines.push(...card.assemblyHints.map(line=>`- ${line}`),'');
+}
 function addCard(card,level=4){
   lines.push(`${'#'.repeat(level)} ${card.manufacturer} · ${card.name}`,'');
   if(card.systemKind)lines.push(`Тип расчёта: ${kinds[card.systemKind]||card.systemKind}.`,'');
@@ -56,6 +92,7 @@ function addCard(card,level=4){
   if(card.needsFabrication)lines.push('Изготовление / обработка облицовки учитываются отдельно по проектной раскладке и технологической карте.', '');
   if(card.needsCoating)lines.push('Отделка / защитное покрытие и его расход определяются документацией продукта.','');
   if(card.application)lines.push(card.application,'');
+  if(card.assembly?.length)addAssembly(card);
   if(card.layerRoles)lines.push(`Допустимые роли утеплителя по источникам: ${card.layerRoles.join(', ')||'автоматический подбор запрещён'}.`,'');
   for(const[key,title]of[['mounting','Конструктив и монтаж'],['accessories','Комплектующие'],['limitations','Ограничения']])if(card[key]?.length){lines.push(`**${title}**`,'',...card[key].map(x=>`- ${x}`),'');}
   lines.push('**Источники**','',...(card.sources.length?card.sources.map(s=>`- [${s.title}](${s.url})${s.pages?`; страницы: ${s.pages}`:''}; проверено ${s.checked}.`):['- Документация конкретного продукта не приложена: размеры, конструкцию и применимость требуется подтвердить.']), '');

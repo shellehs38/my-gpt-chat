@@ -40,4 +40,4 @@ Production-сборка индексирует Codebase Memory и ADR, scripts/e
 
 ## FACADE MATERIAL CATALOG
 
-system-catalog.mjs: 15 систем, 10 профилей металла. Runtime: lib/server/facade-catalog.ts. Карточки: https://my-gpt-chat-theta.vercel.app/facade-calculator/catalog.json; монтаж: materials-guide.md там же. Состав зависит от системы; сердечник один раз. Неизвестный замок требует уточнения. Чат не вызывает движок. docs/FACADE_CALCULATOR.md.
+system-catalog.mjs: 27 систем, 10 профилей металла. Runtime: lib/server/facade-catalog.ts. Карточки: https://my-gpt-chat-theta.vercel.app/facade-calculator/catalog.json; монтаж: materials-guide.md там же. Состав зависит от системы; сердечник один раз. Неизвестный замок требует уточнения. Чат не вызывает движок. docs/FACADE_CALCULATOR.md.

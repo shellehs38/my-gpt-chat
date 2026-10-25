@@ -1,4 +1,4 @@
-import {calculate,WARNING,MODE_UNITS} from './engine.mjs';
+import {calculate,WARNING,MODE_UNITS,number,assemblyInsulationThickness} from './engine.mjs';
 import {getSystemSchema} from './system-kit.mjs';
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt=(n,max=12)=>n===null?'—':new Intl.NumberFormat('ru-RU',{maximumFractionDigits:max}).format(n);
@@ -46,12 +46,14 @@ function projectMaterialMetadata(state){
   if(!record(system))return {cladding:state.cladding,insulationType:state.insulationType,thickness:state.thickness};
   const schema=getSystemSchema(system.variant||system.selection,system);
   if(schema.integratedInsulation)return {cladding:materialName(system.variant||system.selection),insulationType:'Утепляющий сердечник включён в панель; отдельно не добавлен',thickness:system.panelCoreThickness||system.variant?.panelCoreThickness||''};
-  const insulationRows=(scenario.materials||[]).filter(row=>row.enabled&&row.mode==='insulationVolume'&&/^insulation:layer[12]$/.test(row.kitKey||''));
+  const insulationRows=(scenario.materials||[]).filter(row=>row.enabled&&row.mode==='insulationVolume'&&/^(insulation:layer[12]|assembly:)/.test(row.kitKey||''));
   const insulationType=insulationRows.map(row=>{
+    if(row.kitKey?.startsWith('assembly:'))return row.name;
     const outer=row.kitKey==='insulation:layer2',card=outer?(system.insulationSelection2||system.insulationSelection):system.insulationSelection;
     return `${materialName(card)||'Марка не указана'} (слой ${outer?'2':'1'})`;
   }).join('; ');
-  return {cladding:materialName(system.variant||system.selection),insulationType,thickness:sumThickness(insulationRows)};
+  const thickness=schema.assemblyMode?assemblyInsulationThickness(insulationRows):sumThickness(insulationRows);
+  return {cladding:materialName(system.variant||system.selection),insulationType,thickness};
 }
 function sourceUrl(value){
   if(typeof value!=='string')return null;
@@ -75,6 +77,7 @@ function materialCard(card,id,title){
 function systemReport(state){
   const system=state.scenarios?.[state.scenario]?.system;
   if(!record(system))return '';
+  if((system.variant||system.selection)?.assembly)return assemblySystemReport(state,system);
   if((system.variant||system.selection)?.systemKind)return typedSystemReport(state,system);
   const variant=record(system.variant)?system.variant:system.selection;
   const value=(key,suffix='')=>system[key]!==undefined&&String(system[key]).trim()!==''?esc(system[key])+suffix:'Не задано';
@@ -100,6 +103,19 @@ function systemReport(state){
   if(system.includeMembrane)html+=`<p><b>Мембрана включена:</b> добавка к площади ${value('membraneOverlap','%')}; упаковка ${value('membranePack',' м²')}. Мембрана применяется только при наличии её в проектной системе; инструкция сайдинга сама по себе не подтверждает её допустимость.</p>`;
   return html;
 }
+function assemblySystemReport(state,system){
+  const variant=system.variant||system.selection,schema=getSystemSchema(variant,system),values=system.assemblyValues||{};
+  let html=`<h2>Паспорт выбранной технологии</h2><p><b>Система:</b> ${esc(schema.title)}</p><h3>Состав по операциям</h3><ol>`;
+  for(const entry of schema.assembly){const enabled=[...(state.scenarios[state.scenario].materials||[]),...(state.scenarios[state.scenario].works||[])].some(r=>r.enabled&&(r.kitKey===`assembly:${entry.id}`||r.kitKey===`work:assembly:${entry.id}`));
+    html+=`<li><b>${esc(entry.name)}</b> · ${enabled?'Включена':'Не включена в расчёт'} · ${esc(entry.unit)}${entry.techNote?`<br>${esc(entry.techNote)}`:''}</li>`;
+  }
+  html+='</ol><h3>Параметры и источники</h3><dl>';
+  for(const field of schema.assemblyFields){const raw=values[field.id]||'',value=field.type==='select'?(field.options.find(x=>x.id===raw)?.label||raw):raw;html+=`<dt>${esc(field.label)}</dt><dd>${String(value).trim()?esc(value):'Не задано'}</dd>`;}
+  html+='</dl><p>Материалы считаются в единицах выбранных позиций: м² облицовки, кг или л составов, м³ утепления и штуки кирпича. Запас, выделенные остатки, открытые заказы и упаковки относятся к материалам; объёмы работ считаются отдельно по чистой геометрии.</p>';
+  if(schema.kind==='masonry')html+='<p>Количество кирпича = чистая площадь / ((длина кирпича + вертикальный шов) × (высота кирпича + горизонтальный шов)); размеры модуля переводятся из миллиметров в метры. Закупка округляется до целых штук и выбранной упаковки. Раскладка, углы, перевязка, проёмы, опоры и связи уточняются проектом.</p>';
+  for(const note of schema.notes)html+=`<p>${esc(note)}</p>`;
+  return html+materialCard(variant,'system-cladding-card','Материалы, последовательность монтажа и ограничения');
+}
 function typedSystemReport(state,system){
   const variant=system.variant||system.selection,schema=getSystemSchema(variant,system),value=key=>String(system[key]??'').trim()?esc(system[key]):'Не задано';
   const labels={panelLength:'Длина / высота модуля панели, м',usefulWidth:'Полезная ширина модуля, м',fullWidth:'Полная ширина изделия, м',railPitch:'Шаг обрешётки / направляющих, м',bracketPitch:'Шаг кронштейнов, м',anchorsPerBracket:'Анкеров на кронштейн',source:'Основание проектных параметров',directFastenersPerM2:'Крепёж к основанию, шт./м²',directFastenerSource:'Источник крепежа к основанию',fixingsPerM2:'Крепёж облицовки, шт./м²',fastenerSource:'Источник нормы крепежа',clipsPerM2:'Клипсы / кляммеры, шт./м²',clipSource:'Источник нормы клипс',adhesiveNorm:'Расход клея на м²',adhesiveSource:'Источник расхода клея',primerNorm:'Расход грунта на м²',primerSource:'Источник расхода грунта',groutNorm:'Расход заполнителя швов на м²',groutSource:'Источник нормы заполнителя',sealantNorm:'Расход герметизации на м²',sealantSource:'Источник нормы герметизации',coatingNorm:'Расход защитного покрытия на один слой и м²',coatingLayers:'Число слоёв покрытия',coatingSource:'Источник защитного покрытия',substrateNorm:'Расход основания на м²',substrateSource:'Источник расхода основания',subsystemNorm:'Расход каркаса / направляющих, м.п./м²',subsystemSource:'Источник проектной спецификации',jointStripNorm:'Расход нащельников, м.п./м²',jointStripSource:'Источник расхода нащельников',panelCoreThickness:'Толщина встроенного сердечника, мм'};
@@ -120,9 +136,10 @@ function typedSystemReport(state,system){
 function rowTechnology(r){
   const key=typeof r.kitKey==='string'?r.kitKey:'';
   let html='';
-  if(key==='siding:panels'||key==='work:siding'||/^(surface:|mount:|seam:|sandwich:|work:(coating|adhesive|primer|grout|joint-sealant|sandwich-sealing|seam-base|fabrication))/.test(key))html='<br><small><a href="#system-cladding-card">Технология выбранной облицовки</a></small>';
+  if(key.startsWith('assembly:')||key.startsWith('work:assembly:')||key==='siding:panels'||key==='work:siding'||/^(surface:|mount:|seam:|sandwich:|work:(coating|adhesive|primer|grout|joint-sealant|sandwich-sealing|seam-base|fabrication))/.test(key))html='<br><small><a href="#system-cladding-card">Технология выбранной облицовки</a></small>';
   else if(key==='insulation:layer1'||key==='work:insulation1')html='<br><small><a href="#system-insulation-card">Технология утеплителя слоя 1</a></small>';
   else if(key==='insulation:layer2'||key==='work:insulation2')html='<br><small><a href="#system-insulation-card-2">Технология утеплителя слоя 2</a></small>';
+  if(r.areaSource)html+=`<br><small>Источник площади участка: ${esc(r.areaSource)}</small>`;
   if(typeof r.techNote==='string'&&r.techNote.trim())html+=`<br><small>${esc(r.techNote)}</small>`;
   return html;
 }
@@ -131,10 +148,13 @@ const units={windowRevealArea:'Площадь откосов окон',windowRev
 const shapeNames={rect:'Прямоугольник',triangle:'Треугольник',trapezoid:'Трапеция'};
 const taxNames={unknown:'Не определены',none:'Без начисления НДС',included:'НДС включён в цены',onTop:'НДС начисляется сверху'};
 function basisFormula(r){
-  if(r.mode==='norm')return `Чистая площадь × ${esc(r.norm||'—')} ${esc(r.unit)}/м²${r.requiresNormFactor||r.normFactor?` × число слоёв ${esc(r.normFactor||'—')}`:''}`;
-  if(r.mode==='area')return 'Чистая площадь';
-  if(r.mode==='insulationVolume')return `Чистая площадь × толщина слоя ${esc(r.thickness||'—')} мм / 1000`;
-  if(r.mode==='panels')return `Площадь / полезный размер панели ${esc(r.coverWidth||'—')} × ${esc(r.coverHeight||'—')} м; предварительно до раскладки`;
+  let area=(r.requiresAreaOverride||r.areaOverride)?`Площадь участка ${esc(r.areaOverride||'—')} м²`:'Чистая площадь';
+  if(r.requiresAreaDeduction||r.areaDeduction)area=`(${area} − исключённый участок ${esc(r.areaDeduction||'—')} м²)`;
+  if(r.mode==='norm')return `${area} × ${esc(r.norm||'—')} ${esc(r.unit)}/м²${r.requiresNormFactor||r.normFactor?` × ${esc(r.factorLabel||'число слоёв')} ${esc(r.normFactor||'—')}`:''}`;
+  if(r.mode==='area')return area;
+  if(r.mode==='insulationVolume')return `${area} × толщина слоя ${esc(r.thickness||'—')} мм / 1000`;
+  if(r.mode==='panels'&&r.coverageKind==='masonry')return `${area} / кладочный модуль ${esc(r.coverWidth||'—')} × ${esc(r.coverHeight||'—')} м, включая швы; закупка до раскладки`;
+  if(r.mode==='panels')return `${area} / полезный размер панели ${esc(r.coverWidth||'—')} × ${esc(r.coverHeight||'—')} м; предварительно до раскладки`;
   if(['supportLength','supportBrackets','supportAnchors'].includes(r.mode)){
     const direction=r.orientation==='vertical'?'Горизонтальные направляющие':'Вертикальные направляющие';
     const base=`${direction}; шаг ${esc(r.railPitch||'—')} м; по каждой прямоугольной стене, без вычета проёмов`;
@@ -174,7 +194,7 @@ function taxReport(c){
 }
 export function buildReport(state,date=new Date()) {
   const c=calculate(state),variants={insulated:calculate(state,'insulated'),bare:calculate(state,'bare')},metadata=projectMaterialMetadata(state),system=state.scenarios?.[state.scenario]?.system,schema=getSystemSchema(system?.variant||system?.selection,system||{});
-  let html=`<div class="print-brand"><img src="./brand/logo-sl-approved-light.png" alt="Логотип СВОИ ЛЮДИ" width="1674" height="944"></div><h1>СВОИ ЛЮДИ · Расчёт фасадных работ</h1><p>Иркутск · ${esc(new Intl.DateTimeFormat('ru-RU',{timeZone:'Asia/Irkutsk'}).format(date))}</p><p><b>Объект:</b> ${esc(state.project||'Не указан')} · <b>Адрес:</b> ${esc(state.address||'Не указан')}</p><p><b>Система:</b> ${esc(schema.legacy?'вентилируемый фасад на металлической подсистеме':schema.title)} · ${state.scenario==='insulated'?'с утеплением':'без утепления'}</p><p><b>Чистая площадь:</b> ${fmt(c.geo.area)} м² · <b>Основание:</b> ${esc(state.substrate||'Не указано')} · <b>Облицовка:</b> ${esc(metadata.cladding||'Не указана')}</p><p>Высота здания: ${esc(state.buildingHeight||'не указана')} м${state.scenario==='insulated'?` · Общая толщина утепления: ${esc(metadata.thickness||'не указана')} мм`:''}</p><p><b>${status(c)}</b></p>`;
+  let html=`<div class="print-brand"><img src="./brand/logo-sl-approved-light.png" alt="Логотип СВОИ ЛЮДИ" width="1674" height="944"></div><h1>СВОИ ЛЮДИ · Расчёт фасадных работ</h1><p>Иркутск · ${esc(new Intl.DateTimeFormat('ru-RU',{timeZone:'Asia/Irkutsk'}).format(date))}</p><p><b>Объект:</b> ${esc(state.project||'Не указан')} · <b>Адрес:</b> ${esc(state.address||'Не указан')}</p><p><b>Система:</b> ${esc(schema.legacy?'вентилируемый фасад на металлической подсистеме':schema.title)} · ${state.scenario==='insulated'?'с утеплением':'без утепления'}</p><p><b>Чистая площадь:</b> ${fmt(c.geo.area)} м² · <b>Основание:</b> ${esc(state.substrate||'Не указано')} · <b>Облицовка:</b> ${esc(metadata.cladding||'Не указана')}</p><p>Высота здания: ${esc(state.buildingHeight||'не указана')} м${state.scenario==='insulated'?` · ${schema.assemblyMode?'Толщина основного слоя утепления':'Общая толщина утепления'}: ${esc(metadata.thickness||'не указана')} мм`:''}</p><p><b>${status(c)}</b></p>`;
   if(schema.legacy)html+=`<p><b>Подсистема:</b> ${esc(state.subsystem||'Не указана')} · <b>Вылет кронштейна:</b> ${esc(state.bracketOutreach||'Не указан')} мм · <b>Проект / версия:</b> ${esc(state.projectRef||'Не указан')}</p>`;
   else html+=`<p><b>Способ монтажа:</b> ${esc(schema.methodOptions.find(x=>x.id===schema.method)?.label||'Не указан')} · <b>Проект / версия:</b> ${esc(state.projectRef||'Не указан')}</p>`;
   if(state.scenario==='insulated')html+=`<p><b>Тип утепления:</b> ${esc(metadata.insulationType||'Не указан')}. Состав слоёв и толщина отражаются в соответствующих позициях.</p>`;

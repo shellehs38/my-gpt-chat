@@ -12,9 +12,19 @@ function payload(context: string): { familyIndex: Array<{ id: string }>; profile
   return JSON.parse(context.slice(start + 1));
 }
 
+function sameEvidence(actual: CatalogCard, expected: CatalogCard | undefined) {
+  assert.ok(expected);
+  if (!actual.assemblyEvidenceOnly) { assert.deepEqual(actual, expected); return; }
+  assert.equal(actual.assemblyFields, undefined, "browser controls are not model instructions");
+  for (const key of ["id", "name", "manufacturer", "systemId", "systemKind", "scenarioMode", "coverage", "mounting", "accessories", "limitations", "sources", "assembly", "assemblyHints"] as const) assert.deepEqual(actual[key], expected[key], key);
+  const defaults = expected.assemblyFields!.filter(field => field.default !== undefined && field.default !== "");
+  assert.equal(Object.keys(actual.assemblyFieldDefaults!).length, defaults.length);
+  for (const field of defaults) assert.equal(actual.assemblyFieldDefaults![field.id], field.default);
+}
+
 test("runtime catalog retains manufacturer-specific useful dimensions and original source evidence", () => {
   const catalog = loadFacadeCatalog();
-  assert.equal(catalog.families.length, 24); assert.equal(catalog.systems?.length, 15); assert.equal(catalog.insulations.length, 6);
+  assert.ok((catalog.systems?.length || 0) >= 15); assert.equal(catalog.families.length, (catalog.systems?.length || 0) + 9); assert.equal(catalog.insulations.length, 6);
   const shipboard = catalog.families.find(family => family.id === "shipboard")!;
   assert.equal(shipboard.variants.find(card => card.id === "gl-shipboard-240")?.usefulWidth, "0.240");
   assert.equal(shipboard.variants.find(card => card.id === "st-shipboard")?.usefulWidth, "0.230");
@@ -63,7 +73,6 @@ test("short follow-ups use recent user context, while current concrete tasks and
     { mode: "general" as const, message: "Привет! Сколько будет два плюс два?", history },
     { mode: "business" as const, message: "Как ответить клиенту на возражение о высокой цене?", history },
     { mode: "documents" as const, message: "Напиши поздравление с днём рождения", history },
-    { mode: "engineering" as const, message: "Узлы штукатурного фасада СФТК с клинкером", history },
     { mode: "engineering" as const, message: "Забудь Евробрус, теперь рассчитай кровлю", history },
     { mode: "general" as const, message: "Продолжи", history: [{ role: "assistant" as const, content: "Евробрус на фасаде" }] },
     { mode: "estimate" as const, message: "Пересчитай", history: [...history, { role: "user" as const, content: "Теперь считаем кровлю" }] },
@@ -85,9 +94,9 @@ test("broad catalog context is bounded and omits whole cards rather than cutting
   const names = loadFacadeCatalog().families.map(family => `«${family.name}»`).join(", ");
   const context = facadeCatalogContext({ mode: "facade", message: `Сравни все профили металлического сайдинга: ${names}, утеплители и монтаж` });
   assert.ok(context.length <= MAX_FACADE_CATALOG_CONTEXT);
-  const selected = payload(context); assert.equal(selected.familyIndex.length, 24); assert.ok(selected.omittedCardIds.length > 0);
+  const selected = payload(context); assert.equal(selected.familyIndex.length, loadFacadeCatalog().families.length); assert.ok(selected.omittedCardIds.length > 0);
   const all = [...loadFacadeCatalog().families.flatMap(family => family.variants), ...loadFacadeCatalog().insulations];
-  for (const card of [...selected.profiles, ...selected.insulations]) assert.deepEqual(card, all.find(item => item.id === card.id));
+  for (const card of [...selected.profiles, ...selected.insulations]) sameEvidence(card, all.find(item => item.id === card.id));
   assert.match(context, /checkedAt\/checked — дата проверки источника каталога/);
 });
 
@@ -184,11 +193,17 @@ test("authenticated chat passes selected product evidence to the actual model re
       assert.ok(body.instructions.includes('"id":"st-eurobrus"'));
       assert.ok(body.instructions.includes('"usefulWidth":"0.345"'));
       assert.ok(body.instructions.includes("stynergy.ru"));
-    } else {
+    } else if (calls === 2) {
       assert.ok(body.instructions.includes('"id":"fundermax-max-exterior-exposed"'));
       assert.ok(body.instructions.includes('"systemKind":"panel"'));
       assert.ok(body.instructions.includes('"grid":false'));
       assert.ok(body.instructions.includes("fundermax"));
+    } else {
+      assert.ok(body.instructions.includes('"id":"tn-eifs-mineral"'));
+      assert.ok(body.instructions.includes('"assemblyEvidenceOnly":true'));
+      assert.ok(body.instructions.includes('"assemblyFieldDefaults":'));
+      assert.ok(body.instructions.includes("ТЕХНОФАС ОПТИМА"));
+      assert.ok(body.instructions.includes("Instruktsiya-SFTK-2025"));
     }
     assert.doesNotMatch(body.instructions, /Внутренняя финансовая семантика калькулятора/);
     return new Response(JSON.stringify({ status: "completed", output: [{ content: [{ type: "output_text", text: "Для Евробруса STYNERGY порядок монтажа сверху вниз. Уточните систему и узлы." }] }] }), { status: 200 });
@@ -199,8 +214,60 @@ test("authenticated chat passes selected product evidence to the actual model re
     assert.equal(result.status, 200); assert.equal((await result.json()).calculation, "none"); assert.equal(calls, 1);
     const panelResult = await chat(new Request(origin + "/api/chat", { method: "POST", headers: { origin, cookie, "Content-Type": "application/json" }, body: JSON.stringify({ mode: "engineering", message: "Как монтируется HPL Fundermax Max Exterior на фасаде?" }) }));
     assert.equal(panelResult.status, 200); assert.equal((await panelResult.json()).calculation, "none"); assert.equal(calls, 2);
+    const assemblyResult = await chat(new Request(origin + "/api/chat", { method: "POST", headers: { origin, cookie, "Content-Type": "application/json" }, body: JSON.stringify({ mode: "engineering", message: "Как монтируется СФТК ТЕХНОНИКОЛЬ с минеральной ватой?" }) }));
+    assert.equal(assemblyResult.status, 200); assert.equal((await assemblyResult.json()).calculation, "none"); assert.equal(calls, 3);
   } finally {
     globalThis.fetch = originalFetch; resetRateLimitsForTests();
     for (const key of keys) if (prior[key] === undefined) delete process.env[key]; else process.env[key] = prior[key];
   }
+});
+
+
+test("layered facade assemblies select their own stages and do not inherit loose ventilated wool", () => {
+  const cases: Array<[string, string]> = [
+    ["Монтаж СФТК мокрый фасад с утеплением", "eifs"],
+    ["Штукатурный фасад без утепления", "render"],
+    ["Клинкерная плитка на фасаде", "clinker"],
+    ["Натуральный камень для фасада", "natural-stone"],
+    ["Искусственный камень White Hills на фасаде", "artificial-stone"],
+    ["Облицовочный кирпич BRAER", "facing-brick"],
+    ["Фасад из керамогранита", "porcelain"],
+    ["Фасадные панели терракота", "terracotta"],
+    ["Битумная фасадная плитка HAUBERK", "bitumen"],
+  ];
+  const catalog = loadFacadeCatalog();
+  for (const [message, id] of cases) {
+    assert.ok(catalog.families.some(family => family.id === id), `published family ${id}`);
+    assert.equal(hasFacadeCatalogSubject(message), true, message);
+    const context = facadeCatalogContext({ mode: "engineering", message });
+    assert.ok(context.length <= MAX_FACADE_CATALOG_CONTEXT, message);
+    const selected = payload(context);
+    assert.ok(selected.familyIndex.some(family => family.id === id), message);
+    assert.ok(selected.profiles.length > 0, `complete ${id} card must fit the bounded context`);
+    assert.ok(selected.profiles.every(card => card.systemId === id && card.assembly?.length && card.assemblyEvidenceOnly), message);
+    for (const card of selected.profiles) sameEvidence(card, catalog.families.find(family => family.id === id)!.variants.find(item => item.id === card.id));
+    assert.deepEqual(selected.insulations, [], "assembly-specific insulation is not replaced with unrelated ventilated wool");
+  }
+  for (const [id, message] of [["flexible-stone", "Гибкий камень на фасаде"], ["glazing", "Витражное фасадное остекление ALT F50"], ["gfrc", "Стеклофибробетонные панели для фасада"]]) {
+    if (!catalog.families.some(family => family.id === id)) continue;
+    assert.ok(payload(facadeCatalogContext({ mode: "engineering", message })).profiles.some(card => card.systemId === id && card.assembly?.length), id);
+  }
+  assert.match(facadeCatalogContext({ mode: "engineering", message: "Как считать облицовочный кирпич на фасаде?" }), /вертикальный шов/);
+  assert.match(facadeCatalogContext({ mode: "engineering", message: "Штукатурный фасад без утепления" }), /кг\/м²\/мм/);
+  assert.equal(facadeCatalogContext({ mode: "estimate", message: "HAUBERK и битумная черепица на кровле" }), "");
+});
+
+test("assembly loader rejects executable formulas, unknown references and malformed field types", () => {
+  const catalog = loadFacadeCatalog();
+  const assembly = catalog.families.flatMap(family => family.variants).find(card => card.assembly?.length)!;
+  assert.ok(assembly);
+  const changed = () => { const value = structuredClone(catalog); return {value, card: value.families.flatMap(family => family.variants).find(card => card.id === assembly.id)!}; };
+  let {value, card} = changed(); card.assembly![0].mode = "eval:process.env";
+  assert.throws(() => validateFacadeCatalog(value), /assembly/);
+  ({value, card} = changed()); card.assembly![0].normKey = "undeclared";
+  assert.throws(() => validateFacadeCatalog(value), /assembly/);
+  ({value, card} = changed()); card.assemblyFields![0].type = "function" as "text";
+  assert.throws(() => validateFacadeCatalog(value), /assembly/);
+  ({value, card} = changed()); card.assemblyFields!.push({...card.assemblyFields![0]});
+  assert.throws(() => validateFacadeCatalog(value), /assembly/);
 });

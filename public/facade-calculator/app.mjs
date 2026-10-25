@@ -1,4 +1,4 @@
-import {initialState, uid, number, geometry, measurements, calculate, csv, validateImport, createRow, copyCommonRows, RATE_LABELS, MODE_LABELS, MODE_UNITS,MAX_PROJECT_FILE_BYTES,serializeProject} from './engine.mjs';
+import {initialState, uid, number, geometry, measurements, calculate, csv, validateImport, createRow, copyCommonRows, RATE_LABELS, MODE_LABELS, MODE_UNITS,MAX_PROJECT_FILE_BYTES,serializeProject,assemblyInsulationThickness} from './engine.mjs';
 import {buildReport,buildStandaloneReport} from './report.mjs';
 import {createProjectStore} from './project-store.mjs';
 import {parseTakeoff} from './takeoff.mjs';
@@ -179,8 +179,9 @@ function update(){
     if(v)$('[data-bind=cladding]').value=`${v.manufacturer} · ${v.name}`;
     const ins=[activeSystem.insulationSelection,...(activeSystem.layer2?[activeSystem.insulationSelection2]:[])].filter(Boolean);
     $('[data-bind=insulationType]').value=schema.integratedInsulation?`Встроенный слой панели${v?.coreType?' · '+({'mineral-wool':'минеральная вата',pir:'PIR'}[v.coreType]||v.coreType):''}`:ins.map(x=>`${x.manufacturer} · ${x.name}`).join(' / ');
-    const layers=c.sections.materials.rows.filter(r=>r.enabled&&r.mode==='insulationVolume'&&r.kitKey?.startsWith('insulation:layer'));
-    $('[data-bind=thickness]').value=schema.integratedInsulation?activeSystem.panelCoreThickness||'':layers.length&&layers.every(r=>number(r.thickness)>0)?fmt(layers.reduce((sum,r)=>sum+number(r.thickness),0),12):'';
+    const layers=c.sections.materials.rows.filter(r=>r.enabled&&r.mode==='insulationVolume'&&(r.kitKey?.startsWith('insulation:layer')||schema.assemblyMode&&r.kitKey?.startsWith('assembly:')));
+    if(schema.assemblyMode)$('[data-bind=insulationType]').value=layers.map(r=>r.name).join(' / ');
+    $('[data-bind=thickness]').value=schema.integratedInsulation?activeSystem.panelCoreThickness||'':layers.length&&layers.every(r=>number(r.thickness)>0)?fmt(schema.assemblyMode?number(assemblyInsulationThickness(layers)):layers.reduce((sum,r)=>sum+number(r.thickness),0),12):'';
   }
 
   $('#geometry-equation').hidden=state.areaMode==='direct';
