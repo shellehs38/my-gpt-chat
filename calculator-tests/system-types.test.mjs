@@ -20,9 +20,11 @@ function config(v,extra={}){
 const calcRow=(s,key,section='materials')=>calculate(s).sections[section].rows.find(x=>x.kitKey===key);
 const keys=(p,section='materials')=>p[section].map(x=>x.kitKey);
 
-test('all 15 requested categories resolve to product-specific schemas and saved snapshots roundtrip',()=>{
-  assert.equal(claddingSystems.length,15);
-  for(const category of claddingSystems.filter(s=>s.id!=='metal-siding'))for(const card of category.variants){
+test('the original 15 categories retain product-specific schemas and saved snapshot roundtrips',()=>{
+  const originalIds=['vinyl','acrylic','metal-siding','fibercement','wood','plinth','thermal','wpc','acp','hpl','sandwich','stone-lock','cassettes','profiled','seam'];
+  const original=claddingSystems.filter(s=>originalIds.includes(s.id));
+  assert.equal(original.length,15);
+  for(const category of original.filter(s=>s.id!=='metal-siding'))for(const card of category.variants){
     const v=choose(category.id,card.id),schema=getSystemSchema(v),c=config(v),p=previewSystem(project(),c,v);
     assert.equal(schema.systemId,category.id,card.id);
     assert.ok(v.mounting.length>0,card.id);assert.ok(v.sources.length>0||schema.requiresType,card.id);
