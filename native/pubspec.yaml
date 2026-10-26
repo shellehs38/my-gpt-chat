@@ -1,0 +1,36 @@
+name: svoi_lyudi_native
+description: "Личное нативное строительное приложение СВОИ ЛЮДИ для iPhone и Windows."
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.13.7
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  path_provider: 2.1.6
+  file_selector: 1.1.0
+  share_plus: 13.3.1
+  pdf: 3.13.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: 6.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/brand/
+    - assets/manual/
+    - assets/data/
+    - assets/fonts/
+  fonts:
+    - family: DejaVu
+      fonts:
+        - asset: assets/fonts/DejaVuSans.ttf
+        - asset: assets/fonts/DejaVuSans-Bold.ttf
+          weight: 700
