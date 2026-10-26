@@ -103,6 +103,59 @@ class WorkspaceStore extends ChangeNotifier {
   Timer? _draftTimer;
   Future<void> _queue = Future.value();
   ProjectModel? get activeProject => data.activeProject;
+  String get assistantMode => assistantModes.contains(data.assistantMode)
+      ? data.assistantMode
+      : 'general';
+  AssistantThread get activeAssistantThread =>
+      assistantThreadFor(data.activeProjectId, assistantMode);
+  String get assistantDraft => activeAssistantThread.draft;
+
+  AssistantThread assistantThreadFor(String? projectId, String mode) {
+    if (!assistantModes.contains(mode) ||
+        (projectId != null && !data.projects.any((p) => p.id == projectId))) {
+      throw const FormatException('Неверное направление или объект диалога');
+    }
+    for (final thread in data.threads) {
+      if (thread.projectId == projectId && thread.mode == mode) return thread;
+    }
+    if (data.threads.length >= maxAssistantThreads) {
+      throw const FormatException('Достигнут предел количества диалогов');
+    }
+    final thread = AssistantThread(
+      id: newId(),
+      projectId: projectId,
+      mode: mode,
+    );
+    data = data.copyWith(threads: [...data.threads, thread]);
+    // This accessor may be called while building a widget. The save notifies later.
+    _scheduleDraftSave();
+    return thread;
+  }
+
+  void _scheduleDraftSave() {
+    _unsaved = true;
+    _draftTimer?.cancel();
+    _draftTimer = Timer(const Duration(milliseconds: 500), _save);
+  }
+
+  void _replaceThread(AssistantThread thread) {
+    data = data.copyWith(
+      threads: data.threads
+          .map(
+            (prior) =>
+                prior.projectId == thread.projectId && prior.mode == thread.mode
+                ? thread
+                : prior,
+          )
+          .toList(),
+      assistantQuestion:
+          thread.projectId == data.activeProjectId &&
+              thread.mode == assistantMode
+          ? thread.draft
+          : null,
+    );
+  }
+
   Future<void> initialize() async {
     try {
       data = await repository.read() ?? WorkspaceData.demo();
@@ -149,7 +202,13 @@ class WorkspaceStore extends ChangeNotifier {
   Future<bool> saveNow() => _save();
   Future<bool> selectProject(String id) async {
     if (!data.projects.any((p) => p.id == id)) return false;
-    data = data.copyWith(activeProjectId: id);
+    final thread = data.threads
+        .where((t) => t.projectId == id && t.mode == assistantMode)
+        .firstOrNull;
+    data = data.copyWith(
+      activeProjectId: id,
+      assistantQuestion: thread?.draft ?? '',
+    );
     return _save();
   }
 
@@ -161,6 +220,10 @@ class WorkspaceStore extends ChangeNotifier {
           : [project, ...data.projects],
       activeProjectId: project.id,
     );
+    final thread = data.threads
+        .where((t) => t.projectId == project.id && t.mode == assistantMode)
+        .firstOrNull;
+    data = data.copyWith(assistantQuestion: thread?.draft ?? '');
     return _save();
   }
 
@@ -220,10 +283,108 @@ class WorkspaceStore extends ChangeNotifier {
   }
 
   void updateAssistant({String? mode, String? question}) {
-    data = data.copyWith(assistantMode: mode, assistantQuestion: question);
-    _unsaved = true;
-    _draftTimer?.cancel();
-    _draftTimer = Timer(const Duration(milliseconds: 500), _save);
+    if (mode != null && !assistantModes.contains(mode)) {
+      throw const FormatException('Неверное направление помощника');
+    }
+    final selected = mode ?? assistantMode;
+    final thread = assistantThreadFor(data.activeProjectId, selected);
+    data = data.copyWith(
+      assistantMode: selected,
+      assistantQuestion: question ?? thread.draft,
+    );
+    if (question != null) _replaceThread(thread.copyWith(draft: question));
+    _scheduleDraftSave();
+    _notify();
+  }
+
+  void updateAssistantDraft(String text) => updateAssistant(question: text);
+
+  bool updateAssistantDraftFor({
+    required String? projectId,
+    required String mode,
+    required String text,
+    String? expectedThreadId,
+    String? expectedDraft,
+  }) {
+    if (!ready ||
+        _disposed ||
+        text.length > 4000 ||
+        !assistantModes.contains(mode) ||
+        (projectId != null && !data.projects.any((p) => p.id == projectId))) {
+      return false;
+    }
+    final existing = data.threads
+        .where((thread) => thread.projectId == projectId && thread.mode == mode)
+        .firstOrNull;
+    if (expectedThreadId != null && existing?.id != expectedThreadId) {
+      return false;
+    }
+    final thread = existing ?? assistantThreadFor(projectId, mode);
+    if (expectedDraft != null && thread.draft != expectedDraft) return false;
+    _replaceThread(thread.copyWith(draft: text));
+    _scheduleDraftSave();
+    _notify();
+    return true;
+  }
+
+  Future<bool> appendAssistantMessage({
+    required String? projectId,
+    required String mode,
+    required ChatMessage message,
+    String? expectedThreadId,
+    String? clearDraftIfMatches,
+  }) async {
+    if (!ready ||
+        _disposed ||
+        !assistantModes.contains(mode) ||
+        (projectId != null && !data.projects.any((p) => p.id == projectId))) {
+      return false;
+    }
+    final matches = data.threads.where(
+      (thread) => thread.projectId == projectId && thread.mode == mode,
+    );
+    if (expectedThreadId != null &&
+        (matches.isEmpty || matches.first.id != expectedThreadId)) {
+      return false;
+    }
+    final thread = matches.firstOrNull ?? assistantThreadFor(projectId, mode);
+    if (thread.messages.length >= maxAssistantMessages) {
+      error = 'В диалоге уже 100 сообщений. Начните новый диалог.';
+      _notify();
+      return false;
+    }
+    if (data.threads.any((t) => t.messages.any((m) => m.id == message.id))) {
+      return false;
+    }
+    _replaceThread(
+      thread.copyWith(
+        messages: [...thread.messages, message],
+        draft:
+            clearDraftIfMatches != null && thread.draft == clearDraftIfMatches
+            ? ''
+            : thread.draft,
+      ),
+    );
+    return _save();
+  }
+
+  Future<bool> clearAssistantThread({
+    required String? projectId,
+    required String mode,
+    String? expectedThreadId,
+  }) async {
+    if (!ready || _disposed) return false;
+    final thread = assistantThreadFor(projectId, mode);
+    if (expectedThreadId != null && thread.id != expectedThreadId) return false;
+    final previous = data;
+    _replaceThread(thread.copyWith(id: newId(), draft: '', messages: []));
+    final snapshot = data;
+    final saved = await _save();
+    if (!saved && identical(data, snapshot)) {
+      data = previous;
+      _notify();
+    }
+    return saved;
   }
 
   String exportJson() =>
@@ -235,13 +396,25 @@ class WorkspaceStore extends ChangeNotifier {
     final incoming = WorkspaceData.fromJson(
       jsonDecode(text) as Map<String, dynamic>,
     );
-    if (data.projects.length + incoming.projects.length > 1000) {
+    final globalThreads = incoming.threads
+        .where((t) => t.projectId == null)
+        .toList();
+    if (data.projects.length +
+            incoming.projects.length +
+            (globalThreads.isNotEmpty ? 1 : 0) >
+        1000) {
       throw const FormatException('Слишком много объектов');
     }
+    if (data.threads.length + incoming.threads.length > maxAssistantThreads) {
+      throw const FormatException('Слишком много диалогов');
+    }
+    final projectIdMap = {
+      for (final project in incoming.projects) project.id: newId(),
+    };
     final copies = incoming.projects
         .map(
           (p) => ProjectModel(
-            id: newId(),
+            id: projectIdMap[p.id]!,
             name: '${p.name} · копия'.substring(
               0,
               ('${p.name} · копия').length.clamp(0, 140),
@@ -263,10 +436,47 @@ class WorkspaceStore extends ChangeNotifier {
           ),
         )
         .toList();
+    String? globalProjectId;
+    if (globalThreads.isNotEmpty) {
+      globalProjectId = newId();
+      copies.add(
+        ProjectModel(
+          id: globalProjectId,
+          name: 'Общие диалоги · копия',
+          workType: 'other',
+          status: 'planned',
+        ),
+      );
+    }
+    final importedThreads = incoming.threads
+        .map(
+          (thread) => AssistantThread(
+            id: newId(),
+            projectId: thread.projectId == null
+                ? globalProjectId!
+                : projectIdMap[thread.projectId]!,
+            mode: thread.mode,
+            draft: thread.draft,
+            messages: thread.messages
+                .map(
+                  (message) => ChatMessage(
+                    id: newId(),
+                    role: message.role,
+                    content: message.content,
+                    createdAt: message.createdAt,
+                  ),
+                )
+                .toList(),
+          ),
+        )
+        .toList();
     final previous = data;
     final wasReadFailed = _readFailed;
     _readFailed = false;
-    data = data.copyWith(projects: [...data.projects, ...copies]);
+    data = data.copyWith(
+      projects: [...data.projects, ...copies],
+      threads: [...data.threads, ...importedThreads],
+    );
     if (!await _save()) {
       data = previous;
       _readFailed = wasReadFailed;

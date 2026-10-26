@@ -92,6 +92,7 @@ void main() {
             isNull,
             reason: 'route $route at ${size.width}',
           );
+          if (route == 2) await screenshot(tester, 'native-$target-assistant');
           if (route == 3) await screenshot(tester, 'native-$target-calculator');
           if (route == 4) await screenshot(tester, 'native-$target-guides');
         }

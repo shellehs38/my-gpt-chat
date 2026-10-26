@@ -1,7 +1,7 @@
 name: svoi_lyudi_native
 description: "Личное нативное строительное приложение СВОИ ЛЮДИ для iPhone и Windows."
 publish_to: 'none'
-version: 0.1.0+1
+version: 0.2.0+2
 
 environment:
   sdk: ^3.13.7

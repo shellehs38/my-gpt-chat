@@ -44,4 +44,4 @@ system-catalog.mjs: 27 систем, 10 профилей металла. Runtime
 
 ## NATIVE APPLICATION PREVIEW
 
-native/: Flutter iOS+Win, offline. AI+sync pending.
+native/: Flutter iOS+Win. Native bearer/chat, local history. Sync pending.

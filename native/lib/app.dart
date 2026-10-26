@@ -5,7 +5,10 @@ import 'domain/siding_calculator.dart';
 import 'models/workspace.dart';
 import 'screens/calculator_screen.dart';
 import 'screens/guides_screen.dart';
+import 'screens/assistant_screen.dart';
 import 'screens/workspace_panels.dart';
+import 'services/assistant_client.dart';
+import 'services/assistant_controller.dart';
 import 'services/document_service.dart';
 import 'services/native_files.dart';
 import 'services/workspace_store.dart';
@@ -31,8 +34,9 @@ const _icons = [
 ];
 
 class ConstructionApp extends StatelessWidget {
-  const ConstructionApp({super.key, required this.store});
+  const ConstructionApp({super.key, required this.store, this.assistantApi});
   final WorkspaceStore store;
+  final NativeAssistantApi? assistantApi;
   @override
   Widget build(BuildContext context) => MaterialApp(
     debugShowCheckedModeBanner: false,
@@ -41,13 +45,14 @@ class ConstructionApp extends StatelessWidget {
     locale: const Locale('ru'),
     supportedLocales: const [Locale('ru')],
     localizationsDelegates: GlobalMaterialLocalizations.delegates,
-    home: WorkspaceShell(store: store),
+    home: WorkspaceShell(store: store, assistantApi: assistantApi),
   );
 }
 
 class WorkspaceShell extends StatefulWidget {
-  const WorkspaceShell({super.key, required this.store});
+  const WorkspaceShell({super.key, required this.store, this.assistantApi});
   final WorkspaceStore store;
+  final NativeAssistantApi? assistantApi;
   @override
   State<WorkspaceShell> createState() => _WorkspaceShellState();
 }
@@ -56,10 +61,24 @@ class _WorkspaceShellState extends State<WorkspaceShell>
     with WidgetsBindingObserver {
   int tab = 0;
   String? guideProfile;
+  late final AssistantController assistant;
   WorkspaceStore get store => widget.store;
   @override
   void initState() {
     super.initState();
+    assistant = AssistantController(
+      store: store,
+      api:
+          widget.assistantApi ??
+          HttpNativeAssistantApi(
+            baseUri: Uri.parse(
+              const String.fromEnvironment(
+                'ASSISTANT_BASE_URL',
+                defaultValue: 'https://my-gpt-chat-theta.vercel.app',
+              ),
+            ),
+          ),
+    );
     WidgetsBinding.instance.addObserver(this);
     if (!store.ready) store.initialize();
   }
@@ -67,6 +86,7 @@ class _WorkspaceShellState extends State<WorkspaceShell>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    assistant.dispose();
     super.dispose();
   }
 
@@ -338,7 +358,7 @@ class _WorkspaceShellState extends State<WorkspaceShell>
       onCreate: () => _projectForm(),
       onOpen: _openProject,
     ),
-    2 => AssistantPanel(store: store),
+    2 => AssistantScreen(store: store, controller: assistant),
     3 => CalculatorScreen(
       key: ValueKey(store.activeProject?.id),
       initialDraft: store.activeProject?.draft ?? CalculationDraft.empty(),
