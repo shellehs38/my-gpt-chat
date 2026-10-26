@@ -17,7 +17,9 @@ export async function POST(request: Request) {
   const config = getAccessConfig();
   if (!config) return errorResponse("Доступ закрыт: администратору необходимо настроить пароль и секрет сессии на сервере.", 503);
   const window = 15 * 60 * 1000;
-  if (!takeRateLimit("login:global", 30, window) || !takeRateLimit(`login:${requestRateKey(request)}`, 5, window)) {
+  // Reject an exhausted address before charging the shared allowance. Otherwise
+  // one blocked client can keep consuming the global bucket and lock out the owner.
+  if (!takeRateLimit(`login:${requestRateKey(request)}`, 5, window) || !takeRateLimit("login:global", 30, window)) {
     return errorResponse("Слишком много попыток входа. Повторите через 15 минут.", 429, { "Retry-After": "900" });
   }
   let body: unknown;

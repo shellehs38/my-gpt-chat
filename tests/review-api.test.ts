@@ -124,6 +124,27 @@ test("independent review: completed status cannot conceal missing estimate secti
   } finally { globalThis.fetch = priorFetch; clean(); }
 });
 
+test("customer pricing is applied to estimate responses but never to document-mode tables", async () => {
+  const clean = setup(), priorFetch = globalThis.fetch;
+  try {
+    const token = createSessionToken(getAccessConfig()!);
+    globalThis.fetch = async () => new Response(JSON.stringify({ status: "completed", output: [{ status: "completed", content: [{ type: "output_text", text: completeEstimate }] }] }), { status: 200 });
+    const documentResponse = await chat(request({ message: "Подготовь акт выполненных работ", mode: "documents" }, token));
+    assert.equal(documentResponse.status, 200);
+    const documentData = await documentResponse.json();
+    assert.equal(documentData.reply, completeEstimate);
+    assert.equal(documentData.calculation, "none");
+
+    const estimateResponse = await chat(request({ message: "Проверь эту смету", mode: "estimate" }, token));
+    assert.equal(estimateResponse.status, 200);
+    const estimateData = await estimateResponse.json();
+    const estimateReply = String(estimateData.reply);
+    assert.equal(estimateData.calculation, "estimate");
+    assert.match(estimateReply, /Монтаж облицовки \| м² \| 2 \| 70,00 \| 140,00/);
+    assert.match(estimateReply, /Цена для клиента/);
+  } finally { globalThis.fetch = priorFetch; clean(); }
+});
+
 test("independent review: scope and scaffolds do not regress in reversed comparisons or code fences", () => {
   assert.equal(resolveFacadeOptions("Сравни фасад без утепления и с утеплением"), "both");
   assert.equal(resolveFacadeOptions("Сравни фасад с утеплением и без утепления"), "both");

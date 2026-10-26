@@ -1,6 +1,6 @@
 /** A single source of truth for editable Markdown tables. No floating point money. */
 export type EstimateRow = { id: string; cells: string[] };
-export type EstimateTable = { type: "table"; id: string; variantId: string; title: string; headers: string[]; rows: EstimateRow[] };
+export type EstimateTable = { type: "table"; id: string; variantId: string; title: string; headers: string[]; rows: EstimateRow[]; priceBasis?: "client" };
 export type EstimateBlock = { type: "markdown"; id: string; text: string } | EstimateTable;
 export type EstimateDocument = { id: string; blocks: EstimateBlock[] };
 export type CalculatedRow = { rowId: string; kind: "item" | "total" | "section"; amountKopecks: string | null; complete: boolean };
@@ -94,7 +94,7 @@ export function tableColumns(table: EstimateTable): { quantityIndex: number; pri
   const headers = table.headers.map((value) => plain(value).toLowerCase().replace(/ё/g, "е"));
   return {
     quantityIndex: headers.findIndex((name) => /^(количество|кол[- ]?во|объем)(\b|[\s,.(/]|$)/u.test(name) || /^(количество|кол[- ]?во|объем)$/u.test(name)),
-    priceIndex: headers.findIndex((name) => /^(цена|расценка|стоимость за|стоимость ед)/u.test(name)),
+    priceIndex: headers.findIndex((name) => /^(?:базовая\s+)?(?:цена|расценка|ставка|стоимость за|стоимость ед)/u.test(name)),
     sumIndex: headers.findIndex((name) => /^(сумма|стоимость|итого)([\s,.(]|$)/u.test(name) && !/за|единиц|ед\./u.test(name)),
   };
 }
@@ -122,6 +122,57 @@ export function formatKopecks(value: string): string {
   const integer = BigInt(value);
   const rubles = (integer / BigInt(100)).toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ");
   return `${rubles},${(integer % BigInt(100)).toString().padStart(2, "0")}`;
+}
+
+const finalPriceHeader = /(?:для\s+клиента|клиентск|конечн|финальн|надбавк[^|]{0,30}(?:включ|учтен))/iu;
+const explicitlyNotFinalPrice = /(?:не\s+(?:для\s+клиента|включ\p{L}*|учт\p{L}*|рассчит\p{L}*|конечн\p{L}*|финальн\p{L}*)|без\s+(?:надбавк|наценк))/iu;
+const directCost = /(?:^(?:материал|достав|поставк|логистик|вывоз|транспорт|аренд|прокат|техник|механизм|оборудован|закуп)\p{L}*(?:[^\p{L}]|$)|^комплект(?:[^\p{L}]|$)|^(?:затрат|расход)\p{L}*\s+на\s+(?:транспорт|достав|материал|оборудован)|под\s+ключ|(?:работ|монтаж|установк)\p{L}*\s+(?:и|с|\/)\s+материал)/iu;
+
+function marksFinalPrice(raw: string): boolean {
+  const value = plain(raw);
+  return !explicitlyNotFinalPrice.test(value) && finalPriceHeader.test(value);
+}
+
+function adjustedUnitPrice(raw: string): string | null {
+  const value = parseDecimal(raw);
+  if (!value) return null;
+  const numerator = value.integer * BigInt(100) * BigInt(7);
+  const denominator = (BigInt(10) ** BigInt(value.scale)) * BigInt(5);
+  return formatKopecks(((numerator + denominator / BigInt(2)) / denominator).toString());
+}
+
+/**
+ * Converts server-side base work rates to customer-facing rates exactly once.
+ * The returned document contains only final prices; the internal rule is never
+ * serialized as a separate customer line.
+ */
+export function prepareEstimateForClient(document: EstimateDocument): EstimateDocument {
+  return {
+    ...document,
+    blocks: document.blocks.map((block) => {
+      if (block.type !== "table") return block;
+      const nameIndex = block.headers.findIndex((header) => /^(?:№\s*)?(?:наименован|назван|вид\s+работ|работа|позици)/iu.test(plain(header)));
+      const columns = tableColumns(block);
+      const title = plain(block.title);
+      const mixedTitle = /(?:материал\p{L}*\s+(?:и|\/)\s+работ\p{L}*|работ\p{L}*\s+(?:и|\/)\s+материал\p{L}*)/iu.test(title);
+      const isWorks = !mixedTitle && (/(?:^|[^\p{L}])работ\p{L}*(?=[^\p{L}]|$)/iu.test(title) || block.headers.some((header) => /наименование\s+работ/iu.test(plain(header))));
+      const alreadyFinal = block.priceBasis === "client" || block.headers.some(marksFinalPrice);
+      if (!isWorks || alreadyFinal || columns.priceIndex < 0 || nameIndex < 0) return block;
+      const headers = [...block.headers];
+      headers[columns.priceIndex] = "Цена для клиента, руб.";
+      const noteIndex = headers.findIndex((header) => /примечан|комментар/iu.test(plain(header)));
+      const rows = block.rows.map((row) => {
+        if (rowKind(row) !== "item") return row;
+        const name = plain(row.cells[nameIndex] ?? "");
+        const note = noteIndex >= 0 ? plain(row.cells[noteIndex] ?? "") : "";
+        if (!name || directCost.test(name) || marksFinalPrice(note)) return row;
+        const price = adjustedUnitPrice(row.cells[columns.priceIndex] ?? "");
+        if (price === null) return row;
+        return { ...row, cells: row.cells.map((cell, index) => index === columns.priceIndex ? price : cell) };
+      });
+      return { ...block, headers, rows, priceBasis: "client" };
+    }),
+  };
 }
 export function calculateEstimateDocument(document: EstimateDocument): CalculatedDocument {
   const tables = document.blocks.filter((block): block is EstimateTable => block.type === "table").map((table): CalculatedTable => {
@@ -170,8 +221,25 @@ function escapeCell(value: string): string {
 }
 export function formatEstimateProse(text: string, hasCalculation: boolean): string {
   if (!hasCalculation) return text;
-  return text.split("\n").map((line) => /^\s*(?:[-*>]\s*)?\*{0,2}(?:итог(?:о)?|всего|общий итог|общая стоимость|сумма материалов|сумма работ|стоимость (?:всех|материалов|работ))[^\n]*\d/iu.test(line)
-    ? `> Пояснение исходного ответа, не пересчитанный итог: ${line.replace(/^\s*>\s*/, "")}` : line).join("\n");
+  const explicitMoneyTotal = /(?:итоговая (?:стоимость|сумма)|общая (?:стоимость|сумма|цена)|сумма (?:материалов|работ)|стоимость (?:всех|материалов|работ|проекта)|к оплате)/iu;
+  const genericTotal = /(?:^|[^\p{L}])(?:итог(?:о)?|всего(?: к оплате)?|общий итог)(?=[^\p{L}]|$)/iu;
+  const arithmetic = /\d[\d\s.,]*\s*(?:\+|[-−–—/÷×*])\s*\d[\d\s.,]*\s*=\s*\d/iu;
+  const monetaryContext = /(?:₽|руб(?:\.|\p{L}*)?)(?=[^\p{L}]|$)|(?:цен|стоимост|сумм)\p{L}*(?=[^\p{L}]|$)/iu;
+  const isStaleTotal = (value: string) => {
+    const hasNumber = /\d/u.test(value);
+    const hasMoney = monetaryContext.test(value);
+    return hasNumber && (explicitMoneyTotal.test(value) || genericTotal.test(value) && hasMoney)
+      || arithmetic.test(value) && hasMoney;
+  };
+  let noticeAdded = false;
+  return text.split("\n").map((line) => {
+    if (!isStaleTotal(line)) return line;
+    const sentences = line.split(/(?<=[.!?])\s+(?=[\p{L}*_#>])/u);
+    const retained = sentences.length > 1 ? sentences.filter((sentence) => !isStaleTotal(sentence)).join(" ") : "";
+    const notice = noticeAdded ? "" : "> Исходный текстовый итог удалён после пересчёта; актуальные суммы приведены в таблицах.";
+    noticeAdded = true;
+    return [notice, retained].filter(Boolean).join("\n");
+  }).join("\n");
 }
 /** Calculation can be disabled for contracts/advisory tables whose agreed values must remain verbatim. */
 export function serializeEstimateDocument(document: EstimateDocument, calculate = true): string {

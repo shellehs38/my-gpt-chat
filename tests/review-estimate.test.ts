@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   calculateEstimateDocument, multiplyMoney, parseEstimateDocument,
-  serializeEstimateDocument, updateEstimateCell, type EstimateTable,
+  prepareEstimateForClient, serializeEstimateDocument, updateEstimateCell, type EstimateTable,
 } from "../lib/estimate";
 import { buildChatPayload, decodeWorkspace, emptyWorkspace, loadWorkspace, saveWorkspace, WORKSPACE_STORAGE_KEY } from "../lib/workspace-storage";
 import { MAX_HISTORY_MESSAGE_LENGTH } from "../lib/chat-contract";
@@ -93,4 +93,78 @@ test("independent review: a premature overall total cannot hide a later unpriced
   assert.equal(result.complete, false);
   assert.equal(result.rows[1].complete, false);
   assert.match(serializeEstimateDocument(doc), /Всего(?: \| {1,2}){4}100,00 \(известная часть; неполно\)/);
+});
+
+test("base work rates become customer prices once while materials and direct costs stay unchanged", () => {
+  const source = `## Материалы
+${header}
+| 1 | Панель | м² | 1 | 5000 | 5000 | |
+
+## Работы
+${header}
+| 1 | Монтаж | м² | 1 | 5000 | 5000 | |
+| 2 | Доставка | рейс | 1 | 5000 | 5000 | |
+| 3 | Комплект под ключ | компл. | 1 | 5000 | 5000 | Нет разбивки |
+| 4 | Уже конечная ставка | шт. | 1 | 5000 | 5000 | Цена для клиента |
+| 5 | Поставка и монтаж панелей | компл. | 1 | 5000 | 5000 | Требует разбивки |
+| 6 | Затраты на транспорт | рейс | 1 | 5000 | 5000 | |
+| 7 | Монтаж ограждений | шт. | 1 | 5000 | 5000 | Надбавка не включена |
+| 8 | Комплектование объекта | шт. | 1 | 5000 | 5000 | |
+| | Итого работ | | | | 40000 | |`;
+  const prepared = prepareEstimateForClient(parseEstimateDocument(source, "pricing"));
+  const exported = serializeEstimateDocument(prepared);
+  assert.match(exported, /Панель \| м² \| 1 \| 5000 \| 5 000,00/);
+  assert.match(exported, /Монтаж \| м² \| 1 \| 7 000,00 \| 7 000,00/);
+  assert.match(exported, /Доставка \| рейс \| 1 \| 5000 \| 5 000,00/);
+  assert.match(exported, /Комплект под ключ \| компл\. \| 1 \| 5000 \| 5 000,00/);
+  assert.match(exported, /Уже конечная ставка \| шт\. \| 1 \| 5000 \| 5 000,00/);
+  assert.match(exported, /Поставка и монтаж панелей \| компл\. \| 1 \| 5000 \| 5 000,00/);
+  assert.match(exported, /Затраты на транспорт \| рейс \| 1 \| 5000 \| 5 000,00/);
+  assert.match(exported, /Монтаж ограждений \| шт\. \| 1 \| 7 000,00 \| 7 000,00/);
+  assert.match(exported, /Комплектование объекта \| шт\. \| 1 \| 7 000,00 \| 7 000,00/);
+  assert.match(exported, /Цена для клиента, руб\./);
+  assert.doesNotMatch(exported, /40%|руководител/iu);
+
+  const secondPass = serializeEstimateDocument(prepareEstimateForClient(parseEstimateDocument(exported, "repeat")));
+  assert.match(secondPass, /Монтаж \| м² \| 1 \| 7 000,00 \| 7 000,00/);
+  assert.doesNotMatch(secondPass, /9 800/);
+});
+
+test("common works section titles are recognized while mixed cost tables stay unchanged", () => {
+  for (const title of ["Смета на работы", "Стоимость работ", "Перечень работ", "Монтажные работы"]) {
+    const exported = serializeEstimateDocument(prepareEstimateForClient(parseEstimateDocument(`## ${title}\n${header}\n| 1 | Монтаж | шт. | 1 | 5000 | 5000 | |`)));
+    assert.match(exported, /Монтаж \| шт\. \| 1 \| 7 000,00 \| 7 000,00/, title);
+  }
+  const mixed = serializeEstimateDocument(prepareEstimateForClient(parseEstimateDocument(`## Работы и материалы\n${header}\n| 1 | Комплект | шт. | 1 | 5000 | 5000 | |`)));
+  assert.match(mixed, /Комплект \| шт\. \| 1 \| 5000 \| 5 000,00/);
+});
+
+test("edited exports remove obsolete prose amounts instead of preserving contradictions", () => {
+  const prose = [
+    "600 + 5000 = 5600 руб.",
+    "Таким образом, общая стоимость составляет 5600 руб.",
+    "Общая сумма: 5600 руб.",
+    "Стоимость проекта: 5600 руб.",
+    "К оплате: 5600 руб.",
+    "7000 - 1400 = 5600 руб.",
+    "7000 / 2 = 3500 руб.",
+    "Площадь фасада: 10 × 5 = 50 м².",
+    "Периметр: 10 + 8 + 10 + 8 = 36 м.",
+    "Итого площадь фасада: 50 м².",
+    "Итого длина откосов: 36 пог. м.",
+    "Итого: 12 окон.",
+  ].join("\n");
+  const doc = parseEstimateDocument(`${header}\n| 1 | Работа | шт. | 10 | 500 | 5600 | |\n\n${prose}`, "stale-total");
+  const table = doc.blocks.find((block): block is EstimateTable => block.type === "table")!;
+  const edited = updateEstimateCell(doc, table.id, table.rows[0].id, 3, "20");
+  const exported = serializeEstimateDocument(edited);
+  assert.match(exported, /Работа \| шт\. \| 20 \| 500 \| 10 000,00/);
+  assert.match(exported, /Исходный текстовый итог удалён/);
+  assert.doesNotMatch(exported, /600\s*\+|5000\s*=|5600/);
+  assert.match(exported, /Площадь фасада: 10 × 5 = 50 м²/);
+  assert.match(exported, /Периметр: 10 \+ 8 \+ 10 \+ 8 = 36 м/);
+  assert.match(exported, /Итого площадь фасада: 50 м²/);
+  assert.match(exported, /Итого длина откосов: 36 пог\. м/);
+  assert.match(exported, /Итого: 12 окон/);
+  assert.doesNotMatch(exported, /7000\s*[-/]\s*(?:1400|2)/);
 });
