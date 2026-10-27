@@ -47,6 +47,8 @@ jobs:
         run: flutter pub get --enforce-lockfile
       - name: Analyze source
         run: flutter analyze --fatal-infos
+      - name: Check native PDF compiler
+        run: clang --version
       - name: Run tests
         run: flutter test
 
@@ -73,6 +75,8 @@ jobs:
         run: flutter pub get --enforce-lockfile
       - name: Build release app
         run: flutter build windows --release
+      - name: Verify PDFium from the built Windows bundle
+        run: flutter test --no-pub test/native_pdf_engine_test.dart
       - name: Upload complete app directory
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:

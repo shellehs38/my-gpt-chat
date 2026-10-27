@@ -1,3 +1,5 @@
+![СВОИ ЛЮДИ](../public/brand/logo-sl-approved-light.png)
+
 # Версионируемая память архитектуры «СВОИ ЛЮДИ»
 
 Этот файл хранится в GitHub. `npm run memory:index` переносит только указанные секции в ADR индекса; другие секции, добавленные разработчиком, сохраняются.
@@ -44,4 +46,4 @@ system-catalog.mjs: 27 систем, 10 профилей металла. Runtime
 
 ## NATIVE APPLICATION PREVIEW
 
-native/: Flutter iOS+Win. Native bearer/chat, local history. Sync pending.
+native/: Flutter iOS+Win; chat, PDFium. PDFs outside JSON; sync pending.

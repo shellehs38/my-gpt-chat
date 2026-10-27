@@ -3,6 +3,10 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../services/manual_library.dart';
+import 'manual_library_panel.dart';
+import 'pdf_document_screen.dart';
+
 const _navy = Color(0xff18352b);
 const _lime = Color(0xffc6f246);
 const _canvas = Color(0xfff5f6f3);
@@ -11,9 +15,14 @@ const _border = Color(0xffe1e7dd);
 
 /// Native, offline library. No HTML renderer, WebView, or browser is involved.
 class GuidesScreen extends StatefulWidget {
-  const GuidesScreen({super.key, this.initialProfileId});
+  const GuidesScreen({
+    super.key,
+    this.initialProfileId,
+    required this.manualLibrary,
+  });
 
   final String? initialProfileId;
+  final ManualLibrary manualLibrary;
 
   @override
   State<GuidesScreen> createState() => _GuidesScreenState();
@@ -28,6 +37,7 @@ class _GuidesScreenState extends State<GuidesScreen> {
   int _stageIndex = 2;
   bool _expanded = false;
   final _searchController = TextEditingController();
+  final _scrollController = ScrollController();
 
   @override
   void initState() {
@@ -52,6 +62,7 @@ class _GuidesScreenState extends State<GuidesScreen> {
   @override
   void dispose() {
     _searchController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -78,6 +89,7 @@ class _GuidesScreenState extends State<GuidesScreen> {
       _expanded = false;
       _searchController.clear();
     });
+    _scrollToReader();
   }
 
   void _chooseProfile(_GuideProfile profile) {
@@ -85,10 +97,27 @@ class _GuidesScreenState extends State<GuidesScreen> {
       _profileId = profile.id;
       _stageIndex = 2;
     });
+    _scrollToReader();
+  }
+
+  void _scrollToReader() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollController.hasClients) return;
+      _scrollController.animateTo(
+        0,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOut,
+      );
+    });
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: widget.manualLibrary,
+    builder: (context, _) => _buildCatalog(context),
+  );
+
+  Widget _buildCatalog(BuildContext context) {
     return FutureBuilder<List<_GuideCategory>>(
       future: _catalog,
       builder: (context, snapshot) {
@@ -289,6 +318,7 @@ class _GuidesScreenState extends State<GuidesScreen> {
             );
             return SingleChildScrollView(
               key: const PageStorageKey('native-guide-library'),
+              controller: _scrollController,
               padding: EdgeInsets.all(desktop ? 24 : 16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -354,7 +384,7 @@ class _GuidesScreenState extends State<GuidesScreen> {
       ),
       const SizedBox(height: 12),
       _badge(
-        '$count категорий · инструкции на устройстве',
+        '$count категорий · памятки доступны офлайн',
         icon: Icons.offline_pin_outlined,
       ),
       const SizedBox(height: 12),
@@ -536,7 +566,11 @@ class _GuidesScreenState extends State<GuidesScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _badge(
-            illustrated ? 'Иллюстрированный образец' : 'Краткая памятка',
+            illustrated
+                ? 'Иллюстрированный образец'
+                : profile.sources.isEmpty
+                ? 'Памятка · источник не указан'
+                : 'Краткая памятка',
             icon: illustrated ? Icons.menu_book_rounded : Icons.notes_rounded,
           ),
           const SizedBox(height: 14),
@@ -578,79 +612,35 @@ class _GuidesScreenState extends State<GuidesScreen> {
           ],
           LayoutBuilder(
             builder: (context, inner) {
-              final illustration = illustrated
-                  ? Semantics(
-                      button: true,
-                      label:
-                          'Открыть оригинальную страницу $page инструкции Металл Профиль',
-                      child: InkWell(
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => ManualReader(initialPage: page),
-                          ),
-                        ),
-                        borderRadius: BorderRadius.circular(10),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(10),
-                          child: Image.asset(
-                            _pageAsset(page),
-                            fit: BoxFit.contain,
-                            semanticLabel:
-                                'Страница $page инструкции: ${stage.label}',
-                            errorBuilder: (_, error, stack) => const SizedBox(
-                              height: 250,
-                              child: Center(
-                                child: Text('Страница не найдена в сборке'),
-                              ),
-                            ),
-                          ),
+              if (!illustrated) return notes;
+              final illustration = Semantics(
+                button: true,
+                label:
+                    'Открыть оригинальную страницу $page инструкции Металл Профиль',
+                child: InkWell(
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => ManualReader(initialPage: page),
+                    ),
+                  ),
+                  borderRadius: BorderRadius.circular(10),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: Image.asset(
+                      _pageAsset(page),
+                      fit: BoxFit.contain,
+                      semanticLabel:
+                          'Страница $page инструкции: ${stage.label}',
+                      errorBuilder: (_, error, stack) => const SizedBox(
+                        height: 250,
+                        child: Center(
+                          child: Text('Страница не найдена в сборке'),
                         ),
                       ),
-                    )
-                  : Container(
-                      height: 220,
-                      width: double.infinity,
-                      decoration: BoxDecoration(
-                        color: const Color(0xffe8edde),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(
-                            Icons.layers_outlined,
-                            size: 54,
-                            color: Color(0xff82946b),
-                          ),
-                          const SizedBox(height: 18),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 18),
-                            child: Text(
-                              profile.manufacturer,
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                fontSize: 18,
-                                color: _navy,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          const Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 18),
-                            child: Text(
-                              'Подробные схемы — в документации выбранного производителя.',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                color: _muted,
-                                fontSize: 13,
-                                height: 1.6,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
+                    ),
+                  ),
+                ),
+              );
               if (inner.maxWidth >= 660) {
                 return Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -664,23 +654,38 @@ class _GuidesScreenState extends State<GuidesScreen> {
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (illustrated)
-                    SizedBox(
-                      height: 420,
-                      width: double.infinity,
-                      child: illustration,
-                    )
-                  else
-                    illustration,
+                  SizedBox(
+                    height: 420,
+                    width: double.infinity,
+                    child: illustration,
+                  ),
                   const SizedBox(height: 24),
                   notes,
                 ],
               );
             },
           ),
+          const SizedBox(height: 20),
+          ManualLibraryPanel(
+            key: ValueKey('manual-library-${profile.id}'),
+            profileId: profile.id,
+            profileName: profile.name,
+            library: widget.manualLibrary,
+            sources: [
+              for (final source in profile.sources)
+                if (!source.userProvided)
+                  if (_pdfSourceUrl(source.url) case final Uri url)
+                    ManualDownloadSource(
+                      title: source.title,
+                      url: url,
+                      downloadable: source.availability != 'unavailable',
+                    ),
+            ],
+          ),
           const SizedBox(height: 22),
           const Divider(color: _border),
           ExpansionTile(
+            key: PageStorageKey('guide-accessories-${profile.id}'),
             tilePadding: EdgeInsets.zero,
             title: const Text(
               'Комплектующие и область применения',
@@ -692,6 +697,7 @@ class _GuidesScreenState extends State<GuidesScreen> {
             ],
           ),
           ExpansionTile(
+            key: PageStorageKey('guide-sources-${profile.id}'),
             tilePadding: EdgeInsets.zero,
             title: const Text(
               'Источники и редакции',
@@ -711,56 +717,78 @@ class _GuidesScreenState extends State<GuidesScreen> {
     );
   }
 
-  Widget _profileCard(_GuideProfile profile, bool selected) => Container(
-    decoration: BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(14),
-      border: Border.all(
-        color: selected ? const Color(0xff9dbe66) : _border,
-        width: selected ? 1.5 : 1,
+  Widget _profileCard(_GuideProfile profile, bool selected) {
+    final pdfCount = widget.manualLibrary.recordsFor(profile.id).length;
+    return Container(
+      key: ValueKey('guide-card-${profile.id}'),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: selected ? const Color(0xff9dbe66) : _border,
+          width: selected ? 1.5 : 1,
+        ),
       ),
-    ),
-    padding: const EdgeInsets.all(20),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          profile.manufacturer.toUpperCase(),
-          style: const TextStyle(
-            fontSize: 12,
-            letterSpacing: 1,
-            color: _muted,
-            fontWeight: FontWeight.w700,
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            profile.manufacturer.toUpperCase(),
+            style: const TextStyle(
+              fontSize: 12,
+              letterSpacing: 1,
+              color: _muted,
+              fontWeight: FontWeight.w700,
+            ),
           ),
-        ),
-        const SizedBox(height: 12),
-        Text(
-          profile.name,
-          style: const TextStyle(
-            fontSize: 17,
-            height: 1.45,
-            color: _navy,
-            fontWeight: FontWeight.w700,
+          const SizedBox(height: 12),
+          Text(
+            profile.name,
+            style: const TextStyle(
+              fontSize: 17,
+              height: 1.45,
+              color: _navy,
+              fontWeight: FontWeight.w700,
+            ),
           ),
-        ),
-        const SizedBox(height: 12),
-        _badge(
-          profile.manualPage != null
-              ? 'С иллюстрациями · PDF 2019'
-              : 'Краткая памятка и источники',
-        ),
-        const SizedBox(height: 18),
-        OutlinedButton.icon(
-          onPressed: () => _chooseProfile(profile),
-          icon: Icon(
-            selected ? Icons.check_rounded : Icons.arrow_forward_rounded,
-            size: 18,
+          const SizedBox(height: 12),
+          _badge(
+            profile.manualPage != null
+                ? 'С иллюстрациями · PDF 2019'
+                : profile.sources.isEmpty
+                ? 'Памятка · источник не указан'
+                : 'Краткая памятка и источники',
           ),
-          label: Text(selected ? 'Инструкция выбрана' : 'Читать инструкцию'),
-        ),
-      ],
-    ),
-  );
+          if (pdfCount > 0) ...[
+            const SizedBox(height: 10),
+            _badge(
+              'PDF на устройстве: $pdfCount',
+              icon: Icons.offline_pin_outlined,
+            ),
+          ],
+          const SizedBox(height: 18),
+          OutlinedButton.icon(
+            key: ValueKey('guide-select-${profile.id}'),
+            onPressed: () => _chooseProfile(profile),
+            icon: Icon(
+              selected ? Icons.check_rounded : Icons.arrow_forward_rounded,
+              size: 18,
+            ),
+            label: Text(
+              selected
+                  ? (profile.sources.isEmpty
+                        ? 'Памятка выбрана'
+                        : 'Инструкция выбрана')
+                  : (profile.sources.isEmpty
+                        ? 'Открыть памятку'
+                        : 'Читать инструкцию'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 /// All pages are bundled renderings of the original PDF and work without network.
@@ -796,6 +824,35 @@ class _ManualReaderState extends State<ManualReader> {
     });
   }
 
+  Future<void> _openOriginalPdf() async {
+    final initialPage = _page;
+    try {
+      final data = await rootBundle.load('assets/manual/manual.pdf');
+      if (!mounted) return;
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => PdfDocumentScreen(
+            bytes: data.buffer.asUint8List(
+              data.offsetInBytes,
+              data.lengthInBytes,
+            ),
+            title: 'Металл Профиль · 3-е издание, 2019',
+            initialPage: initialPage,
+          ),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Не удалось открыть PDF. Страницы инструкции доступны в этом просмотрщике.',
+          ),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -808,6 +865,12 @@ class _ManualReaderState extends State<ManualReader> {
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
         ),
         actions: [
+          IconButton(
+            key: const ValueKey('original-manual-pdf'),
+            tooltip: 'Открыть оригинальный PDF',
+            onPressed: _openOriginalPdf,
+            icon: const Icon(Icons.picture_as_pdf_outlined),
+          ),
           Padding(
             padding: const EdgeInsets.only(right: 14),
             child: Image.asset(
@@ -1023,7 +1086,14 @@ Widget _bullets(String title, List<String> values) => Padding(
 );
 
 Widget _source(BuildContext context, _GuideSource source) {
-  final local = source.userProvided || source.url.startsWith('assets/');
+  final local = source.url == 'assets/manual/manual.pdf';
+  final checkLabel = source.userProvided
+      ? 'Файл пользователя изучен'
+      : source.availability == 'unavailable'
+      ? 'Ссылка недоступна при проверке'
+      : source.evidence == 'indexedExcerpt'
+      ? 'Проверен фрагмент'
+      : 'Проверка в исходном каталоге';
   return Container(
     margin: const EdgeInsets.only(bottom: 14),
     padding: const EdgeInsets.all(14),
@@ -1051,7 +1121,7 @@ Widget _source(BuildContext context, _GuideSource source) {
         ],
         const SizedBox(height: 6),
         Text(
-          '${source.userProvided ? 'Файл пользователя изучен' : 'Проверка в исходном каталоге'}: ${source.checked.isEmpty ? 'дата не указана' : source.checked}',
+          '$checkLabel: ${source.checked.isEmpty ? 'дата не указана' : source.checked}',
           style: const TextStyle(fontSize: 13, color: _muted, height: 1.6),
         ),
         if (local) ...[
@@ -1068,6 +1138,9 @@ Widget _source(BuildContext context, _GuideSource source) {
         ] else if (source.url.isNotEmpty) ...[
           const SizedBox(height: 10),
           SelectableText(
+            key: PageStorageKey(
+              'guide-source-url-${source.url}-${source.title}',
+            ),
             source.url,
             style: const TextStyle(
               fontSize: 13,
@@ -1202,6 +1275,8 @@ class _GuideSource {
     required this.pages,
     required this.checked,
     required this.userProvided,
+    required this.availability,
+    required this.evidence,
   });
   factory _GuideSource.fromJson(Map<String, dynamic> json) => _GuideSource(
     title: json['title'] as String? ?? 'Документация производителя',
@@ -1209,10 +1284,25 @@ class _GuideSource {
     pages: json['pages']?.toString() ?? '',
     checked: json['checked'] as String? ?? '',
     userProvided: json['userProvided'] == true,
+    availability: json['availability'] as String? ?? '',
+    evidence: json['evidence'] as String? ?? '',
   );
   final String title;
   final String url;
   final String pages;
   final String checked;
   final bool userProvided;
+  final String availability, evidence;
+}
+
+Uri? _pdfSourceUrl(String value) {
+  final uri = Uri.tryParse(value);
+  if (uri == null ||
+      uri.scheme != 'https' ||
+      uri.host.isEmpty ||
+      uri.userInfo.isNotEmpty ||
+      !uri.path.toLowerCase().endsWith('.pdf')) {
+    return null;
+  }
+  return uri;
 }

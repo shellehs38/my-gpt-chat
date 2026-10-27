@@ -11,6 +11,7 @@ import 'services/assistant_client.dart';
 import 'services/assistant_controller.dart';
 import 'services/document_service.dart';
 import 'services/native_files.dart';
+import 'services/manual_library.dart';
 import 'services/workspace_store.dart';
 import 'theme.dart';
 
@@ -34,8 +35,14 @@ const _icons = [
 ];
 
 class ConstructionApp extends StatelessWidget {
-  const ConstructionApp({super.key, required this.store, this.assistantApi});
+  const ConstructionApp({
+    super.key,
+    required this.store,
+    required this.manualLibrary,
+    this.assistantApi,
+  });
   final WorkspaceStore store;
+  final ManualLibrary manualLibrary;
   final NativeAssistantApi? assistantApi;
   @override
   Widget build(BuildContext context) => MaterialApp(
@@ -45,13 +52,23 @@ class ConstructionApp extends StatelessWidget {
     locale: const Locale('ru'),
     supportedLocales: const [Locale('ru')],
     localizationsDelegates: GlobalMaterialLocalizations.delegates,
-    home: WorkspaceShell(store: store, assistantApi: assistantApi),
+    home: WorkspaceShell(
+      store: store,
+      manualLibrary: manualLibrary,
+      assistantApi: assistantApi,
+    ),
   );
 }
 
 class WorkspaceShell extends StatefulWidget {
-  const WorkspaceShell({super.key, required this.store, this.assistantApi});
+  const WorkspaceShell({
+    super.key,
+    required this.store,
+    required this.manualLibrary,
+    this.assistantApi,
+  });
   final WorkspaceStore store;
+  final ManualLibrary manualLibrary;
   final NativeAssistantApi? assistantApi;
   @override
   State<WorkspaceShell> createState() => _WorkspaceShellState();
@@ -81,6 +98,7 @@ class _WorkspaceShellState extends State<WorkspaceShell>
     );
     WidgetsBinding.instance.addObserver(this);
     if (!store.ready) store.initialize();
+    if (!widget.manualLibrary.ready) widget.manualLibrary.initialize();
   }
 
   @override
@@ -379,6 +397,7 @@ class _WorkspaceShellState extends State<WorkspaceShell>
     4 => GuidesScreen(
       key: ValueKey(guideProfile),
       initialProfileId: guideProfile,
+      manualLibrary: widget.manualLibrary,
     ),
     5 => DocumentsPanel(
       store: store,

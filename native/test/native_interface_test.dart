@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:svoi_lyudi_native/app.dart';
 import 'package:svoi_lyudi_native/models/workspace.dart';
 import 'package:svoi_lyudi_native/services/workspace_store.dart';
+import 'package:svoi_lyudi_native/services/manual_library.dart';
 
 Future<void> screenshot(WidgetTester tester, String name) async {
   await settleNative(tester);
@@ -72,7 +73,11 @@ void main() {
           repository,
           initialData: WorkspaceData.demo(),
         );
-        await tester.pumpWidget(ConstructionApp(store: store));
+        final manuals = ManualLibrary(MemoryManualRepository());
+        addTearDown(manuals.dispose);
+        await tester.pumpWidget(
+          ConstructionApp(store: store, manualLibrary: manuals),
+        );
         await settleNative(tester);
         expect(tester.takeException(), isNull);
         final target = size.width > 1000 ? 'windows' : 'iphone';

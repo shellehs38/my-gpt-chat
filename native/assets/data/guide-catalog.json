@@ -184,7 +184,7 @@
           "sources": [
             {
               "title": "Металл Профиль. Сайдинг. Инструкция по монтажу, 3-е издание, 2019",
-              "url": "assets/manual.pdf",
+              "url": "assets/manual/manual.pdf",
               "pages": "17–18; общие разделы 3–16; проёмы 22; завершение 23",
               "checked": "2026-10-26",
               "userProvided": true
@@ -193,7 +193,7 @@
           "manual": {
             "page": 17,
             "edition": "3-е издание, 2019",
-            "pdf": "assets/manual.pdf"
+            "pdf": "assets/manual/manual.pdf"
           }
         },
         {
@@ -649,7 +649,7 @@
           "manual": {
             "page": 19,
             "edition": "3-е издание, 2019",
-            "pdf": "assets/manual.pdf"
+            "pdf": "assets/manual/manual.pdf"
           }
         },
         {
@@ -725,7 +725,7 @@
           "manual": {
             "page": 20,
             "edition": "3-е издание, 2019",
-            "pdf": "assets/manual.pdf"
+            "pdf": "assets/manual/manual.pdf"
           }
         },
         {
@@ -1013,7 +1013,7 @@
           "manual": {
             "page": 21,
             "edition": "3-е издание, 2019",
-            "pdf": "assets/manual.pdf"
+            "pdf": "assets/manual/manual.pdf"
           }
         },
         {
