@@ -1,0 +1,117 @@
+name: Native builds
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_windows:
+        description: Build Windows x64 portable app
+        required: true
+        default: true
+        type: boolean
+      build_ios_unsigned:
+        description: Compile iOS without signing (not installable IPA)
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-builds-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: 3.47.8
+  CI: true
+
+jobs:
+  checks:
+    name: Analyze and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out reviewed source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Set up Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: false
+      - name: Show SDK version
+        run: flutter --version
+      - name: Resolve locked dependencies
+        run: flutter pub get --enforce-lockfile
+      - name: Analyze source
+        run: flutter analyze --fatal-infos
+      - name: Check native PDF compiler
+        run: clang --version
+      - name: Run tests
+        run: flutter test
+
+  windows:
+    name: Windows x64 portable
+    needs: checks
+    if: ${{ inputs.build_windows }}
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - name: Check out reviewed source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Set up Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: false
+      - name: Enable Windows desktop
+        run: flutter config --enable-windows-desktop
+      - name: Resolve locked dependencies
+        run: flutter pub get --enforce-lockfile
+      - name: Build release app
+        run: flutter build windows --release
+      - name: Verify PDFium from the built Windows bundle
+        run: flutter test --no-pub test/native_pdf_engine_test.dart
+      - name: Upload complete app directory
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: windows-x64-portable-${{ github.sha }}
+          path: build/windows/x64/runner/Release/
+          if-no-files-found: error
+          retention-days: 14
+
+  ios_unsigned:
+    name: iOS compile only (unsigned)
+    needs: checks
+    if: ${{ inputs.build_ios_unsigned }}
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out reviewed source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Set up Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: false
+      - name: Resolve locked dependencies
+        run: flutter pub get --enforce-lockfile
+      - name: Compile without signing
+        run: flutter build ios --release --no-codesign
+      - name: Preserve unsigned app bundle permissions
+        run: tar -czf build/ios/ios-unsigned-compile-only.tar.gz -C build/ios/iphoneos Runner.app
+      - name: Upload explicitly unsigned compile artifact
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: ios-unsigned-COMPILE-ONLY-${{ github.sha }}
+          path: build/ios/ios-unsigned-compile-only.tar.gz
+          if-no-files-found: error
+          retention-days: 14
