@@ -7,12 +7,14 @@
   <title>Калькулятор домов · СВОИ ЛЮДИ</title>
   <link rel="icon" type="image/png" href="../brand/logo-sl-approved-light.png">
   <link rel="stylesheet" href="./styles.css"><script type="module" src="./app.mjs"></script>
+  <link rel="stylesheet" href="../calculators/navigation.css">
 </head>
 <body>
   <header class="topbar"><div class="shell topbar-inner">
     <a class="brand" href="/" aria-label="СВОИ ЛЮДИ — к помощнику"><img src="../brand/logo-sl-approved-light.png" alt="Фирменный логотип SL — СВОИ ЛЮДИ" width="1674" height="944"><small>СТРОИТЕЛЬНАЯ КОМПАНИЯ · ИРКУТСК</small></a>
-    <nav class="header-links" aria-label="Рабочие инструменты"><a href="../facade-calculator/">Фасадный калькулятор ↗</a><span>Рабочий инструмент</span></nav>
+    <nav class="header-links" aria-label="Рабочие инструменты"><a href="../calculators/index.html">Все калькуляторы ↗</a><span>Рабочий инструмент</span></nav>
   </div></header>
+  <nav class="calculator-switcher" aria-label="Общий раздел калькуляторов"><div class="calculator-switcher__inner"><a class="calculator-switcher__home" href="../calculators/index.html">Все калькуляторы</a><a href="../house-calculator/index.html" aria-current="page">Дом под ключ</a><a href="../facade-calculator/index.html" >Фасад</a><a class="calculator-switcher__assistant" href="/">← Помощник</a></div></nav>
   <main class="shell">
     <section class="hero"><div><p class="eyebrow">РАБОЧИЕ ИНСТРУМЕНТЫ / 02</p><h1>Дом.<br><span>Всё по расчёту.</span></h1><p class="hero-description">Брус, каркас и пеноблок.<br>От размеров — к объёмам, от спецификации — к стоимости.</p></div><div class="hero-note"><span class="round">м³</span><h2>Каждая цифра<br>имеет основание</h2><p>Материалы, работа бригады и прочие расходы отдельно. Цена и прибыль задаются вами.</p><a href="#object">Начать расчёт ↘</a></div></section>
     <div class="toolbar"><button id="new-project" class="secondary">Новый расчёт</button><button id="save-version" class="secondary">Сохранить версию</button><button id="download-project" class="secondary">Скачать JSON</button><button id="import-project" class="secondary">Загрузить JSON</button><button id="download-report" class="primary">Отчёт с логотипом</button><button id="print-project" class="secondary">Печать / PDF</button><input id="import-file" type="file" accept=".json,application/json" hidden></div>

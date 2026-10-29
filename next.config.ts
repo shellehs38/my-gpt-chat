@@ -12,7 +12,8 @@ const config: NextConfig = {
   async redirects() {
     return [
       {source: "/facade-calculator", destination: "/facade-calculator/index.html", permanent: false},
-      {source: "/house-calculator", destination: "/house-calculator/index.html", permanent: false}
+      {source: "/house-calculator", destination: "/house-calculator/index.html", permanent: false},
+      {source: "/calculators", destination: "/calculators/index.html", permanent: false}
     ];
   },
   async headers() {
