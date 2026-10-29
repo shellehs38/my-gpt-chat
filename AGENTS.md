@@ -15,3 +15,7 @@
 ## Supabase и учёт
 
 При задачах о клиентах, объектах, расходах, сметах и переносе базы обязательно читай [docs/SUPABASE_BUSINESS_ASSISTANT.md](docs/SUPABASE_BUSINESS_ASSISTANT.md) и SQL-схему `supabase/migrations/20261019_initial_private_business_schema.sql`. Сохраняй текущий Google Sheets учёт, пока адаптер Supabase не проверен. Не утверждай, что сайт уже записывает в Supabase, до реального сквозного теста.
+
+## Graphify — обязательная проверка перед изменением кода
+
+Владелец утвердил использование Graphify при работах над репозиторием. Перед изменениями и после них выполняй анализ зависимостей и влияния через Graphify, когда он доступен. Полные правила и точный handle рабочей области: [docs/GRAPHIFY_RULES.md](docs/GRAPHIFY_RULES.md). Graphify не заменяет чтение исходников, тесты и ограничения на Production.
