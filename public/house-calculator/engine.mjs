@@ -3,6 +3,7 @@ import { TURNKEY_STAGES, TURNKEY_ROWS, SCOPE_STAGES } from './turnkey-kit.mjs';
 export const SCHEMA_VERSION = 1;
 export const MAX_FILE_BYTES = 2 * 1024 * 1024;
 export const TECHNOLOGIES = { timber: 'Дом из бруса', frame: 'Каркасный дом', foam: 'Дом из пеноблока' };
+export const FOUNDATION_TYPES = { manual: 'Бетон по спецификации', slab: 'Фундаментная плита', strip: 'Ленточный фундамент', piles: 'Сваи по проекту' };
 export const STAGES = { preparation: TURNKEY_STAGES.preparation, foundation: 'Фундамент', walls: 'Стены и перегородки', floors: 'Перекрытия', roof: 'Крыша', openings: 'Окна и двери', well: TURNKEY_STAGES.well, external: TURNKEY_STAGES.external, electrical: TURNKEY_STAGES.electrical, plumbing: TURNKEY_STAGES.plumbing, heating: TURNKEY_STAGES.heating, ventilation: TURNKEY_STAGES.ventilation, finishing: 'Отделка', siteworks: TURNKEY_STAGES.siteworks, other: 'Доставка, техника и прочее' };
 export const GROUPS = { materials: 'Материалы', works: 'Работы бригады', subcontract: 'Субподряд и подключения', other: 'Прочие расходы' };
 export const WARNING = 'Предварительная калькуляция по введённым данным. Для Иркутска проектировщик должен проверить грунты, сейсмичность площадки, фундамент, несущие конструкции, снеговые и ветровые нагрузки, узлы, пожарные и теплотехнические требования, применимость и актуальные редакции СП/ГОСТ. Калькулятор не подбирает сечения, армирование, шаг стоек или свай и не заменяет рабочий проект.';
@@ -17,7 +18,7 @@ export const METRICS = {
   insulationVolume: ['Утеплитель в ячейках каркаса', 'м³'],
   insulationArea: ['Чистая площадь ячеек утепления', 'м²'],
   floorArea: ['Перекрытия: площадь по проекту', 'м²'], roofArea: ['Кровля: площадь скатов', 'м²'],
-  foundationVolume: ['Бетон фундамента', 'м³'], pileCount: ['Сваи по проекту', 'шт.'], wellDepth: ['Глубина бурения по КП / факту', 'м.п.']
+  foundationVolume: ['Бетон фундамента', 'м³'], foundationFormworkArea: ['Опалубка: площадь контакта с бетоном', 'м²'], pileCount: ['Сваи по проекту', 'шт.'], wellDepth: ['Глубина бурения по КП / факту', 'м.п.']
 };
 export const uid = () => globalThis.crypto?.randomUUID?.() || `house-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 export function number(value) {
@@ -64,11 +65,18 @@ function rowTemplate(technology, foundationType = 'manual', gableStructure = 'sa
     work('foundation-grillage-work', 'foundation', 'Устройство ростверка / обвязки', 'компл.');
   } else {
     mat('foundation-main', 'foundation', 'Бетон фундамента по проектной марке', 'м³', 'foundationVolume');
-    work('foundation-work', 'foundation', 'Укладка бетона фундамента', 'м³', 'foundationVolume');
+    work('foundation-work', 'foundation', 'Заливка, уплотнение и выравнивание бетона', 'м³', 'foundationVolume');
     mat('foundation-rebar', 'foundation', 'Арматура по спецификации', 'т');
     work('foundation-rebar-work', 'foundation', 'Армирование по спецификации', 'т');
-    mat('foundation-form', 'foundation', 'Материалы опалубки', 'м²');
-    work('foundation-form-work', 'foundation', 'Монтаж / демонтаж опалубки', 'м²');
+    mat('foundation-form', 'foundation', 'Щиты опалубки к закупке по спецификации', 'м²');
+    mat('foundation-form-fix', 'foundation', 'Стойки, раскосы, стяжки и крепёж опалубки', 'компл.');
+    work('foundation-form-work', 'foundation', 'Установка и раскрепление опалубки', 'м²', 'foundationFormworkArea');
+    work('foundation-form-remove', 'foundation', 'Разборка опалубки', 'м²', 'foundationFormworkArea');
+    work('foundation-cure-work', 'foundation', 'Уход за бетоном по технологической карте', 'компл.');
+    add('foundation-pump', 'foundation', 'other', 'Бетононасос по составу КП', 'смена');
+    rows[rows.length - 1].enabled = false;
+    add('foundation-form-rent', 'foundation', 'other', 'Аренда опалубки с комплектующими по КП', 'компл.');
+    rows[rows.length - 1].enabled = false;
     mat('foundation-base', 'foundation', 'Подготовка: песок, щебень (разбить при уточнении)', 'м³');
     work('foundation-earth', 'foundation', 'Земляные работы и подготовка основания', 'м³');
   }
@@ -140,7 +148,7 @@ export function createProject(technology = 'timber') {
   return {
     schemaVersion: SCHEMA_VERSION, id: uid(), name: '', address: '', technology,
     geometry: { length: '', width: '', wallHeightSum: '', rectOpenings: '', gableArea: '', gableOpenings: '', gableStructure: 'same', wallThicknessMm: '', solidReplacements: '', frameLumber: '', insulationArea: '', insulationThicknessMm: '', floorArea: '', blockLengthMm: '', blockHeightMm: '', blockWidthMm: '', verticalJointMm: '', horizontalJointMm: '' },
-    foundation: { type: 'manual', length: '', width: '', heightMm: '', count: '', volume: '' },
+    foundation: { type: 'manual', length: '', width: '', heightMm: '', count: '', volume: '', formworkMode: 'manual', formworkArea: '', formworkHeightMm: '', formworkSideLength: '', formworkEndCount: '' },
     roof: { mode: 'direct', area: '', ridgeLength: '', span: '', angle: '', eave: '', endOverhang: '', holes: '' },
     stages: Object.fromEntries(Object.keys(STAGES).map(key => [key, true])),
     rows: rowTemplate(technology), utilities: { wellDepth: '', wellPricing: 'included' }, sourceDocument: '', assumptions: '', targetProfit: '', taxNote: '', reviewed: false,
@@ -157,20 +165,87 @@ export function applyScope(project, scope) {
 // Reconcile template rows without carrying a price across a different unit/material.
 export function changeAssembly(project, { technology = project.technology, foundationType = project.foundation.type, gableStructure = project.geometry.gableStructure } = {}) {
   if (!Object.hasOwn(TECHNOLOGIES, technology)) throw Error('Неизвестная технология.');
+  if (!Object.hasOwn(FOUNDATION_TYPES, foundationType)) throw Error('Неизвестный тип фундамента.');
   const next = structuredClone(project), oldTech = project.technology;
+  const changedFoundation = foundationType !== project.foundation.type;
+  const legacyFoundation = !changedFoundation && project.rows.some(r => r.id === 'foundation-form-work' && r.metric !== 'foundationFormworkArea');
   next.technology = technology; next.foundation.type = foundationType; next.geometry.gableStructure = gableStructure;
+  if (changedFoundation) {
+    // A strip's total length is not a slab's length; retain the old values only in its saved version.
+    for (const key of ['length', 'width', 'heightMm', 'count', 'volume', 'formworkArea', 'formworkHeightMm', 'formworkSideLength', 'formworkEndCount']) next.foundation[key] = '';
+    next.foundation.formworkMode = ['slab', 'strip'].includes(foundationType) ? 'geometry' : 'manual';
+  }
   const old = new Map(project.rows.map(r => [r.id, r]));
   next.rows = rowTemplate(technology, foundationType, gableStructure).map(row => {
     const prior = old.get(row.id);
     const changedWall = oldTech !== technology && row.stage === 'walls';
-    return prior && !changedWall && prior.unit === row.unit && prior.metric === row.metric ? structuredClone(prior) : row;
+    return prior && !changedWall && !(changedFoundation && row.stage === 'foundation') && prior.unit === row.unit && prior.metric === row.metric ? structuredClone(prior) : row;
   });
-  next.rows.push(...structuredClone(project.rows.filter(r => !r.template && !(oldTech !== technology && r.stage === 'walls'))));
+  if (legacyFoundation) next.rows = next.rows.filter(r => r.stage !== 'foundation');
+  next.rows.push(...structuredClone(project.rows.filter(r => {
+    if (legacyFoundation && r.stage === 'foundation') return true;
+    return !r.template && !(oldTech !== technology && r.stage === 'walls');
+  })));
   if (oldTech !== technology) {
     for (const key of ['wallThicknessMm', 'solidReplacements', 'frameLumber', 'insulationArea', 'insulationThicknessMm', 'blockLengthMm', 'blockHeightMm', 'blockWidthMm', 'verticalJointMm', 'horizontalJointMm']) next.geometry[key] = '';
   }
   next.reviewed = false;
   return next;
+}
+// Explicit, reversible upgrade: imported v1 estimates keep their original combined price until requested.
+export function upgradeFoundationRows(project) {
+  const next = structuredClone(project);
+  if (next.foundation.type === 'piles') return next;
+  const combined = next.rows.find(r => r.id === 'foundation-form-work' && r.metric !== 'foundationFormworkArea');
+  if (combined) {
+    combined.id = uid(); combined.template = false; combined.enabled = false;
+    combined.name = `Прежняя совмещённая позиция: ${combined.name}`;
+  }
+  const ids = new Set(next.rows.map(r => r.id));
+  for (const row of rowTemplate(next.technology, next.foundation.type, next.geometry.gableStructure).filter(r => r.stage === 'foundation')) {
+    if (!ids.has(row.id)) next.rows.push(row);
+  }
+  next.reviewed = false;
+  return next;
+}
+export function foundationTakeoff(f) {
+  const errors = {};
+  const read = (key, label, positive = false) => {
+    const n = number(f[key]);
+    if (n === null || positive && n <= 0) { errors[key] = label; return null; }
+    return n;
+  };
+  let foundationVolume = null, foundationFormworkArea = null, pileCount = null;
+  if (f.type === 'manual') foundationVolume = read('volume', 'Укажите объём бетона по спецификации.');
+  let length = null, width = null, height = null;
+  if (f.type === 'slab' || f.type === 'strip') {
+    length = read('length', f.type === 'slab' ? 'Укажите длину плиты.' : 'Укажите расчётную длину лент без повторного учёта пересечений.', true);
+    width = read('width', f.type === 'slab' ? 'Укажите ширину плиты.' : 'Укажите ширину ленты.', true);
+    height = read('heightMm', 'Укажите высоту / толщину бетонного тела в миллиметрах.', true);
+    if ([length, width, height].every(n => n !== null)) foundationVolume = length * width * height / 1000;
+  }
+  if (f.type === 'piles') {
+    pileCount = read('count', 'Укажите целое количество свай по проекту.', true);
+    if (pileCount !== null && !Number.isInteger(pileCount)) { errors.count = 'Количество свай должно быть целым.'; pileCount = null; }
+  } else if ((f.formworkMode || 'manual') === 'manual') {
+    foundationFormworkArea = read('formworkArea', 'Укажите площадь контакта опалубки с бетоном (или явный 0).');
+  } else if (f.formworkMode === 'geometry' && ['slab', 'strip'].includes(f.type)) {
+    const h = read('formworkHeightMm', 'Укажите высоту контакта опалубки с бетоном в миллиметрах (или явный 0).');
+    if (h !== null && height !== null && h > height) errors.formworkHeightMm = 'Высота контакта опалубки не может превышать высоту бетонного тела; для разных высот используйте ведомость площадей.';
+    if (f.type === 'slab') {
+      if ([length, width, h].every(n => n !== null) && !errors.formworkHeightMm) foundationFormworkArea = 2 * (length + width) * h / 1000;
+    } else {
+      const sides = read('formworkSideLength', 'Укажите длину всех боковых граней с опалубкой, включая обе стороны лент.');
+      const ends = read('formworkEndCount', 'Укажите количество свободных торцов с опалубкой (или явный 0).');
+      if (ends !== null && !Number.isInteger(ends)) errors.formworkEndCount = 'Количество торцов должно быть целым.';
+      if ([sides, ends, width, h].every(n => n !== null) && !errors.formworkHeightMm && !errors.formworkEndCount) foundationFormworkArea = (sides + ends * width) * h / 1000;
+    }
+  } else errors.formworkMode = 'Для этого фундамента введите площадь опалубки по ведомости.';
+  const metrics = Object.fromEntries(Object.entries({ foundationVolume, foundationFormworkArea, pileCount }).map(([key, n]) => {
+    if (n !== null && (!Number.isFinite(n) || n < 0 || n > 1e9)) { errors[key] = 'Объём или площадь фундамента вне допустимого диапазона.'; n = null; }
+    return [key, n === null ? null : Number(n.toFixed(6))];
+  }));
+  return { metrics, errors };
 }
 export function takeoff(project) {
   const g = project.geometry, f = project.foundation, r = project.roof, errors = {};
@@ -222,18 +297,8 @@ export function takeoff(project) {
       }
     }
   }
-  let foundationVolume = null, pileCount = null;
-  if (f.type === 'manual') foundationVolume = value(f, 'volume', 'Объём бетона фундамента по спецификации');
-  if (f.type === 'slab' || f.type === 'strip') {
-    const fl = value(f, 'length', f.type === 'slab' ? 'Длина плиты по проекту' : 'Суммарная длина лент по осевым линиям', true);
-    const fw = value(f, 'width', f.type === 'slab' ? 'Ширина плиты по проекту' : 'Ширина ленты', true);
-    const ft = value(f, 'heightMm', 'Высота / толщина бетонного тела по проекту', true);
-    foundationVolume = fl !== null && fw !== null && ft !== null ? fl * fw * ft / 1000 : null;
-  }
-  if (f.type === 'piles') {
-    pileCount = value(f, 'count', 'Количество свай по проекту', true);
-    if (pileCount !== null && !Number.isInteger(pileCount)) { errors.count = 'Количество свай должно быть целым'; pileCount = null; }
-  }
+  const foundation = foundationTakeoff(f);
+  const { foundationVolume, foundationFormworkArea, pileCount } = foundation.metrics;
   let roofArea = null;
   if (r.mode === 'direct') roofArea = value(r, 'area', 'Чистая площадь скатов по проекту');
   else {
@@ -247,15 +312,18 @@ export function takeoff(project) {
   }
   const floorArea = value(g, 'floorArea', 'Суммарная чистая площадь перекрытий по проекту');
   const wellDepth = value(project.utilities, 'wellDepth', 'Глубина бурения по КП / факту');
-  const metrics = Object.fromEntries(Object.entries({ footprint, perimeter, wallArea, mainWallArea, frameGableArea, wallVolume, blockCount, frameLumber, insulationArea, insulationVolume, foundationVolume, pileCount, roofArea, floorArea, wellDepth }).map(([key, n]) => [key, safe(n)]));
-  return { metrics, errors, formulas: [
+  const metrics = Object.fromEntries(Object.entries({ footprint, perimeter, wallArea, mainWallArea, frameGableArea, wallVolume, blockCount, frameLumber, insulationArea, insulationVolume, foundationVolume, foundationFormworkArea, pileCount, roofArea, floorArea, wellDepth }).map(([key, n]) => [key, safe(n)]));
+  return { metrics, errors, foundationErrors: foundation.errors, formulas: [
     'Периметр = 2 × (длина + ширина). Наружный контур = длина × ширина; это не полезная площадь.',
     'Площадь стен = периметр × сумма прямоугольных высот − проёмы стен + фронтоны − проёмы фронтонов.',
     'Сплошные стены = [L×W − (L−2t)×(W−2t)] × H − проёмы стен × t + сплошные фронтоны × t − замещающий объём. Углы учтены один раз.',
     'Пеноблок: округление вверх(объём кладки / ((длина + вертикальный шов) × (высота + горизонтальный шов) × ширина блока)). Это предварительный подсчёт до раскладки.',
     'Утеплитель каркаса = чистая площадь ячеек × толщина. Стойки, обвязки, проёмы вычитаются в проектной площади ячеек; пиломатериал берётся из спецификации.',
     'Простая симметричная двускатная кровля = (длина вдоль конька + 2×торцевой свес) × (пролёт + 2×горизонтальный карнизный свес) / cos(угол) − проёмы.',
-    'Плита = её проектные длина × ширина × толщина. Лента = суммарная осевая длина × ширина × высота. Рёбра, ступени, отдельные ростверки и вычеты вводятся вручную.'
+    'Бетон плиты = её проектные длина × ширина × толщина / 1000 (толщина в мм). Бетон ленты = расчётная длина × ширина × высота / 1000. Для замкнутого прямоугольного контура одинаковой ширины подходит осевой периметр; Т- и Х-пересечения, рёбра, ступени и пустоты — по ведомости без задвоений.',
+    'Опалубка простой плиты = 2 × (длина + ширина) × высота контакта / 1000. Только четыре наружных борта; отверстия, рёбра, перепады и нижняя палуба — по отдельной ведомости.',
+    'Опалубка ленты = (суммарная длина всех боковых граней с опалубкой + число свободных торцов × ширина ленты) × высота контакта / 1000. Обе стороны входят в длину граней один раз; примыкания и бетонирование в грунт исключаются из неё. Разные высоты и ширины — по ведомости площадей.',
+    'Установка и разборка опалубки — отдельные работы по чистой площади контакта. Закупка щитов задаётся по спецификации с учётом повторного использования; запас материала не увеличивает оплату работ. При комплексной ставке отключите уже включённые операции.'
   ] };
 }
 export function calculate(project) {
@@ -339,10 +407,12 @@ export function parseProject(text) {
   if (!['cost-plus', 'contract'].includes(base.saleMode)) throw Error('Неизвестный способ назначения цены.');
   for (const section of ['geometry', 'foundation', 'roof', 'utilities']) {
     if (!record(p[section])) throw Error(`Нет раздела ${section}.`);
-    strings(base[section], p[section], Object.keys(base[section]), 200);
+    const optional = ['formworkMode', 'formworkArea', 'formworkHeightMm', 'formworkSideLength', 'formworkEndCount'];
+    strings(base[section], p[section], Object.keys(base[section]).filter(key => section !== 'foundation' || !optional.includes(key) || Object.hasOwn(p[section], key)), 200);
   }
   if (!['same', 'frame'].includes(base.geometry.gableStructure) || !['manual', 'slab', 'strip', 'piles'].includes(base.foundation.type) || !['direct', 'duopitch'].includes(base.roof.mode)) throw Error('Неизвестный способ расчёта.');
   if (!['included', 'separate'].includes(base.utilities.wellPricing)) throw Error('Неизвестный состав цены бурения.');
+  if (!['manual', 'geometry'].includes(base.foundation.formworkMode)) throw Error('Неизвестный способ расчёта опалубки.');
   if (!record(p.stages) || Object.keys(STAGES).some(key => typeof p.stages[key] !== 'boolean')) throw Error('Некорректные этапы.');
   base.stages = Object.fromEntries(Object.keys(STAGES).map(key => [key, p.stages[key]]));
   if (!Array.isArray(p.rows) || p.rows.length > 500) throw Error('Допускается не более 500 позиций.');

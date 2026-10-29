@@ -1,4 +1,4 @@
-import { calculate, createProject, changeAssembly, applyScope, createRow, uid, TECHNOLOGIES, STAGES, GROUPS, METRICS, format, money, parseProject, serializeProject, MAX_FILE_BYTES, WARNING } from './engine.mjs';
+import { calculate, createProject, changeAssembly, upgradeFoundationRows, applyScope, createRow, uid, TECHNOLOGIES, STAGES, GROUPS, METRICS, format, money, parseProject, serializeProject, MAX_FILE_BYTES, WARNING } from './engine.mjs';
 import { PROJECTS, referenceProject } from './project-catalog.mjs';
 import { createReport, escapeHtml as esc } from './report.mjs';
 import { readStorage, saveStorage, snapshot, STORAGE_KEY } from './storage.mjs';
@@ -44,8 +44,17 @@ function renderStructure() {
   const type = project.foundation.type;
   $('#foundation-manual').hidden = type !== 'manual'; $('#foundation-piles').hidden = type !== 'piles';
   $('#foundation-dimensions').hidden = !['slab', 'strip'].includes(type);
-  $('#foundation-length-label').textContent = type === 'strip' ? 'Суммарная длина лент по осевым линиям, м' : 'Длина плиты по проекту, м';
+  $('#foundation-length-label').textContent = type === 'strip' ? 'Расчётная длина лент без задвоений, м' : 'Длина плиты по проекту, м';
   $('#foundation-width-label').textContent = type === 'strip' ? 'Ширина ленты, м' : 'Ширина плиты по проекту, м';
+  $('#foundation-strip-note').hidden = type !== 'strip';
+  $('#foundation-formwork').hidden = type === 'piles';
+  const formGeometry = project.foundation.formworkMode === 'geometry';
+  $('#formwork-geometry-option').disabled = !['slab', 'strip'].includes(type);
+  $('#formwork-manual').hidden = formGeometry;
+  $('#formwork-height').hidden = !formGeometry;
+  $('#formwork-strip').hidden = !formGeometry || type !== 'strip';
+  $('#formwork-slab-note').hidden = !formGeometry || type !== 'slab';
+  $('#foundation-upgrade').hidden = type === 'piles' || project.rows.some(r => r.id === 'foundation-form-remove');
   $('#roof-direct').hidden = project.roof.mode !== 'direct'; $('#roof-dimensions').hidden = project.roof.mode === 'direct';
   $('#target-profit-field').hidden = project.saleMode !== 'cost-plus'; $('#contract-price-field').hidden = project.saleMode !== 'contract';
   $('#reference-notice').hidden = !project.reference;
@@ -57,7 +66,7 @@ function renderRows() {
   $('#stage-switches').innerHTML = Object.entries(STAGES).map(([key, name]) => `<label><input type="checkbox" data-stage="${key}"${checked(project.stages[key])}>${esc(name)}</label>`).join('');
   $('#estimate-rows').innerHTML = Object.entries(STAGES).filter(([key]) => project.stages[key]).map(([stage, name]) => {
     const rows = project.rows.filter(r => r.stage === stage);
-    return `<details class="estimate-stage" data-stage="${stage}"${openStages.has(stage) || first && stage === 'walls' ? ' open' : ''}><summary>${esc(name)}<small>${rows.filter(r => r.enabled).length} позиций включено</small></summary>${rows.map(row => {
+    return `<details class="estimate-stage" id="stage-${stage}" data-stage="${stage}"${openStages.has(stage) || first && stage === 'walls' ? ' open' : ''}><summary>${esc(name)}<small>${rows.filter(r => r.enabled).length} позиций включено</small></summary>${rows.map(row => {
       const prefix = `row-${row.id}`;
       return `<article class="estimate-row${row.enabled ? '' : ' disabled'}" id="${esc(prefix)}" data-row-id="${esc(row.id)}"><div class="row-head"><label><input type="checkbox" data-row="${esc(row.id)}" data-key="enabled" aria-label="Включить ${esc(row.name)}"${checked(row.enabled)}><input class="row-name" data-row="${esc(row.id)}" data-key="name" value="${esc(row.name)}" maxlength="1000" aria-label="Наименование позиции"></label>${row.template ? '' : `<button class="small-button" data-delete="${esc(row.id)}" aria-label="Удалить позицию ${esc(row.name)}">Удалить</button>`}</div><p class="row-group">${esc(GROUPS[row.group])} · ${esc(row.unit || 'единица не указана')}</p><div class="row-main"><label>${row.group === 'materials' ? 'К закупке' : 'Объём'}${row.metric === 'manual' ? `<input data-row="${esc(row.id)}" data-key="quantity" inputmode="decimal" value="${esc(row.quantity)}" placeholder="Количество" aria-label="Количество ${esc(row.name)}">` : `<output data-quantity="${esc(row.id)}">—</output>`}<small>${esc(row.unit)} · ${esc(METRICS[row.metric][0])}</small></label><label>${row.group === 'works' ? 'Оплата бригаде' : 'Цена за единицу'}, ₽<input data-row="${esc(row.id)}" data-key="price" inputmode="decimal" value="${esc(row.price)}" placeholder="Ваша расценка" aria-label="Цена ${esc(row.name)}"></label><label class="sum-label">Сумма<output data-amount="${esc(row.id)}">—</output></label></div><details class="row-more"><summary>Источник, способ расчёта${row.group === 'materials' ? ', запас и упаковка' : ''}</summary><div class="fields two"><label>Способ расчёта<select data-row="${esc(row.id)}" data-key="metric">${options(METRICS, row.metric)}</select></label><label>Единица измерения<input data-row="${esc(row.id)}" data-key="unit" value="${esc(row.unit)}" maxlength="30"${row.metric !== 'manual' ? ' readonly' : ''}></label>${row.group === 'materials' ? `<label>Запас, %<input data-row="${esc(row.id)}" data-key="reserve" value="${esc(row.reserve)}" inputmode="decimal" placeholder="0 — без запаса"></label><label>Количество в упаковке <small>пусто — упаковка не учитывается</small><input data-row="${esc(row.id)}" data-key="pack" value="${esc(row.pack)}" inputmode="decimal" placeholder="В единицах этой строки"></label>` : ''}<label>Источник цены / состав комплекта<input data-row="${esc(row.id)}" data-key="source" value="${esc(row.source)}" maxlength="2000" placeholder="Поставщик, КП, прайс или согласовано владельцем"></label><label>Дата цены<input data-row="${esc(row.id)}" data-key="date" type="date" value="${esc(row.date)}"></label>${!row.template ? `<label>Этап<select data-row="${esc(row.id)}" data-key="stage">${options(STAGES, row.stage)}</select></label><label>Группа затрат<select data-row="${esc(row.id)}" data-key="group">${options(GROUPS, row.group)}</select></label>` : ''}</div></details><p class="row-state" data-errors="${esc(row.id)}"></p></article>`;
     }).join('')}</details>`;
@@ -68,8 +77,14 @@ function renderVersions() {
 }
 function updateCalculation() {
   const c = calculate(project);
-  const metrics = [['footprint', 'Наружный контур уровня', 'м²'], ['perimeter', 'Наружный периметр', 'м.п.'], ['wallArea', 'Наружные стены с фронтонами', 'м²'], ...project.technology === 'frame' ? [['frameLumber', 'Каркас по спецификации', 'м³'], ['insulationVolume', 'Утеплитель в ячейках', 'м³']] : [['wallVolume', 'Сплошные стены', 'м³']], ...project.technology === 'foam' ? [['blockCount', 'Пеноблок до запаса', 'шт.']] : [], ['floorArea', 'Перекрытия по проекту', 'м²'], ['roofArea', 'Кровля по скатам', 'м²']];
+  const foundationMetrics = project.foundation.type === 'piles' ? [['pileCount', 'Сваи по проекту', 'шт.']] : [['foundationVolume', 'Бетон фундамента', 'м³'], ['foundationFormworkArea', 'Площадь контакта опалубки', 'м²']];
+  const metrics = [['footprint', 'Наружный контур уровня', 'м²'], ['perimeter', 'Наружный периметр', 'м.п.'], ['wallArea', 'Наружные стены с фронтонами', 'м²'], ...project.technology === 'frame' ? [['frameLumber', 'Каркас по спецификации', 'м³'], ['insulationVolume', 'Утеплитель в ячейках', 'м³']] : [['wallVolume', 'Сплошные стены', 'м³']], ...project.technology === 'foam' ? [['blockCount', 'Пеноблок до запаса', 'шт.']] : [], ...foundationMetrics, ['floorArea', 'Перекрытия по проекту', 'м²'], ['roofArea', 'Кровля по скатам', 'м²']];
   $('#metrics').innerHTML = metrics.map(([key, label, unit]) => `<div><dt>${esc(label)}<small>${esc(unit)}</small></dt><dd>${esc(format(c.metrics[key]))}</dd></div>`).join('');
+  $('#foundation-metrics').innerHTML = foundationMetrics.map(([key, label, unit]) => `<div><dt>${esc(label)}<small>${esc(unit)}</small></dt><dd>${esc(format(c.metrics[key]))}</dd></div>`).join('');
+  $('#foundation-errors').textContent = Object.values(c.foundationErrors).join(' ');
+  const foundationRows = c.rows.filter(r => r.stage === 'foundation');
+  const foundationComplete = foundationRows.length > 0 && foundationRows.every(r => !r.errors.length);
+  $('#foundation-costs').innerHTML = !project.stages.foundation ? '<p class="hint">Этап «Фундамент» исключён из общей сметы.</p>' : `<p class="hint">${foundationComplete ? 'Затраты по включённым строкам фундамента' : 'Известные затраты на фундамент — состав / цены не заполнены полностью'}. Накладные, ваше вознаграждение, налог и прибыль задаются в общем итоге.</p><dl class="foundation-summary">${Object.entries(GROUPS).map(([key, label]) => `<div><dt>${esc(label)}</dt><dd>${esc(money(foundationRows.filter(r => r.group === key).reduce((sum, row) => sum + (row.amount ?? 0n), 0n)))}</dd></div>`).join('')}</dl>`;
   $('#costs').innerHTML = Object.entries(GROUPS).map(([key, label]) => `<div><dt>${esc(label)}<small>известная часть</small></dt><dd>${esc(money(c.groups[key]))}</dd></div>`).join('') + `<div><dt>Себестоимость<small>${c.costComplete ? 'все включённые строки заполнены' : 'известный подытог, неполно'}</small></dt><dd>${esc(money(c.costSubtotal))}</dd></div>`;
   $('#profit-results').innerHTML = [['Затраты с накладными, вознаграждением и налогом', c.fullCost], ['Ваше вознаграждение руководителя', c.ownerPay], ['Плановая прибыль ООО после учтённого налога', c.companyProfit]].map(([name, value]) => `<div><dt>${esc(name)}</dt><dd>${esc(money(value))}</dd></div>`).join('');
   $('#grand-total').textContent = money(c.total); $('#total-label').textContent = c.total === null ? 'Общий итог не определён' : 'Предварительная цена включённого состава';
@@ -106,7 +121,7 @@ function updateInput(event) {
       renderAll(); changed(); return;
     }
     set(path, value);
-    if (path === 'roof.mode' || path === 'saleMode') renderStructure();
+    if (path === 'roof.mode' || path === 'saleMode' || path === 'foundation.formworkMode') renderStructure();
     if (path === 'utilities.wellPricing') {
       const included = value === 'included', drill = project.rows.find(r => r.id === 'well-drill'), casing = project.rows.find(r => r.id === 'well-casing');
       if (drill) { drill.name = included ? 'Бурение с обсадкой по составу КП' : 'Бурение без обсадной трубы по КП'; drill.price = ''; drill.source = ''; drill.date = ''; }
@@ -130,6 +145,12 @@ document.addEventListener('input', event => { if (event.target.tagName !== 'SELE
 document.addEventListener('change', event => { if (event.target.tagName === 'SELECT' || event.target.type === 'checkbox') updateInput(event); });
 document.addEventListener('click', event => {
   const button = event.target.closest('button');
+  const stageLink = event.target.closest('[data-open-stage]');
+  if (stageLink) {
+    const stage = document.getElementById(`stage-${stageLink.dataset.openStage}`);
+    if (stage) { event.preventDefault(); stage.open = true; stage.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+    return;
+  }
   const link = event.target.closest('[data-goto]');
   if (link) {
     event.preventDefault(); const row = document.getElementById(`row-${link.dataset.goto}`); if (!row) return;
@@ -138,6 +159,10 @@ document.addEventListener('click', event => {
   }
   if (!button) return;
   try {
+    if (button.id === 'upgrade-foundation') {
+      keepVersion('Перед разделением работ по опалубке'); project = upgradeFoundationRows(project); renderAll(); save();
+      message('Установка и разборка добавлены отдельно. Прежняя совмещённая строка сохранена и отключена; проверьте новые расценки.');
+    }
     if (button.dataset.technology && button.dataset.technology !== project.technology) {
       keepVersion(`Перед сменой технологии: ${TECHNOLOGIES[project.technology]}`);
       project = changeAssembly(project, { technology: button.dataset.technology }); renderAll(); save();
