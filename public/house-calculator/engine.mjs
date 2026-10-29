@@ -163,9 +163,9 @@ export function changeAssembly(project, { technology = project.technology, found
   next.rows = rowTemplate(technology, foundationType, gableStructure).map(row => {
     const prior = old.get(row.id);
     const changedWall = oldTech !== technology && row.stage === 'walls';
-    return prior && !changedWall && prior.unit === row.unit && prior.metric === row.metric ? prior : row;
+    return prior && !changedWall && prior.unit === row.unit && prior.metric === row.metric ? structuredClone(prior) : row;
   });
-  next.rows.push(...project.rows.filter(r => !r.template && !(oldTech !== technology && r.stage === 'walls')));
+  next.rows.push(...structuredClone(project.rows.filter(r => !r.template && !(oldTech !== technology && r.stage === 'walls'))));
   if (oldTech !== technology) {
     for (const key of ['wallThicknessMm', 'solidReplacements', 'frameLumber', 'insulationArea', 'insulationThicknessMm', 'blockLengthMm', 'blockHeightMm', 'blockWidthMm', 'verticalJointMm', 'horizontalJointMm']) next.geometry[key] = '';
   }

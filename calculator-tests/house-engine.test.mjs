@@ -117,6 +117,7 @@ test('изменение геометрии сохраняет цены, сме�
   const next = changeAssembly(p, { technology: 'foam' });
   assert.equal(next.rows.find(r => r.id === 'roof-cover').price, '1200');
   assert.equal(next.rows.find(r => r.id === 'roof-cover').name, 'Конкретная кровля');
+  next.rows.find(r => r.id === 'roof-cover').price = '900'; assert.equal(roof.price, '1200', 'editing a new assembly must not mutate the previous object');
   assert.ok(next.rows.filter(r => r.stage === 'walls').every(r => r.price === '')); assert.equal(next.geometry.wallThicknessMm, '');
   assert.equal(p.technology, 'timber', 'original version remains intact');
 });
