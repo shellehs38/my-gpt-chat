@@ -10,7 +10,11 @@ const config: NextConfig = {
     "/api/project-memory": ["./data/codebase-memory.json"],
   },
   async redirects() {
-    return [{source: "/facade-calculator", destination: "/facade-calculator/index.html", permanent: false}];
+    return [
+      {source: "/facade-calculator", destination: "/facade-calculator/index.html", permanent: false},
+      {source: "/house-calculator", destination: "/house-calculator/index.html", permanent: false},
+      {source: "/calculators", destination: "/calculators/index.html", permanent: false}
+    ];
   },
   async headers() {
     return [{

@@ -7,6 +7,7 @@
   <title>Калькулятор фасада · СВОИ ЛЮДИ</title>
   <link rel="icon" type="image/png" href="./brand/logo-sl-approved-light.png"><link rel="stylesheet" href="./styles.css">
   <script type="module" src="./app.mjs"></script>
+  <link rel="stylesheet" href="../calculators/navigation.css">
 </head>
 <body>
   <header class="topbar"><div class="shell topbar-inner">
@@ -15,6 +16,7 @@
     <details class="file-menu"><summary>Файл проекта <span>⌄</span></summary><div><button id="open-projects">Мои объекты и версии</button><button id="save-version">Сохранить версию сейчас</button><button id="save-project">Сохранить проект .json</button><button id="load-project">Загрузить проект .json</button><button id="print-project">Печать / PDF с логотипом</button><button id="download-csv">CSV — внутренние данные</button><button id="new-project">Новый расчёт</button></div></details>
     <input id="import-file" type="file" accept=".json,application/json" hidden>
   </div></header>
+  <nav class="calculator-switcher" aria-label="Общий раздел калькуляторов"><div class="calculator-switcher__inner"><a class="calculator-switcher__home" href="../calculators/index.html">Все калькуляторы</a><a href="../house-calculator/index.html" >Дом под ключ</a><a href="../facade-calculator/index.html" aria-current="page">Фасад</a><a class="calculator-switcher__assistant" href="/">← Помощник</a></div></nav>
   <main class="shell">
     <div class="hero"><div class="hero-copy"><p class="eyebrow"><span></span>РАБОЧИЕ ИНСТРУМЕНТЫ / 01</p><h1>Фасад.<br><span>Всё по расчёту.</span></h1><p class="hero-description">От размеров дома — к понятной стоимости.<br>Материалы и работы отдельно, все исходные данные — ваши.</p><a href="#object" class="hero-link">Начать с параметров дома <span>↘</span></a></div>
       <div class="facade-visual" aria-hidden="true"><div class="visual-label">ВЕНТИЛИРУЕМЫЙ ФАСАД<span>МЕТАЛЛИЧЕСКАЯ ПОДСИСТЕМА</span></div><svg viewBox="0 0 520 220" fill="none"><defs><pattern id="panel" width="22" height="20" patternUnits="userSpaceOnUse"><path d="M0 0v20M0 0h22" stroke="#5d7869" stroke-width=".65"/></pattern></defs><path d="m118 83 145-53 149 56-144 60z" fill="#e4e7dc" stroke="#2e5142"/><path d="M118 83v92l150 30v-59z" fill="#c4d0bc" stroke="#2e5142"/><path d="m268 146 144-60v91l-144 28z" fill="#b5c4aa" stroke="#2e5142"/><path d="M118 83v92l150 30v-59z" fill="url(#panel)"/><path d="m268 146 144-60v91l-144 28z" fill="url(#panel)"/><path d="m107 68 155-55 163 58" stroke="#2e5142" stroke-width="3"/><path d="m142 110 38 12v40l-38-9zM207 129l38 12v39l-38-8z" fill="#edf0e4" stroke="#2e5142"/><path d="m302 141 29-11v44l-29 6zM354 120l28-11v55l-28 6z" fill="#edf0e4" stroke="#2e5142"/><path d="m177 123-31 30m95-11-29 30m115-40-21 43m71-62-19 51" stroke="#78917f"/><path d="M84 90v84m-6-84h12m-12 84h12m40 27 132 26m-132-32v12m132 14v12" stroke="#88a18c" stroke-dasharray="3 3"/><circle cx="404" cy="49" r="23" fill="#183e35"/><path d="m395 49 6 6 12-13" stroke="#e3edc7" stroke-width="2"/><path d="M284 61 330 78m-63-34 94 36" stroke="#90a28e"/></svg><div class="visual-caption"><span>Геометрия → объёмы → стоимость</span><span class="visual-dots">● ● ●</span></div></div>
