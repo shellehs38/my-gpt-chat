@@ -37,7 +37,7 @@ export function mountDrawing(root, onApply) {
       return `<article class="drawing-measure" data-measure="${r.field}"><b>${esc(r.label)}</b><span class="reading-state">${r.confidence === 'clear' ? 'Прочитано — проверить' : r.confidence === 'unclear' ? 'Нужно уточнение' : 'Нет подтверждённых данных'}</span><p>${esc(r.evidence)}</p><div class="fields two"><label>Значение<input data-drawing-value="${r.field}" value="${esc(r.value)}" inputmode="decimal" maxlength="30"></label><label>Единица<select data-drawing-unit="${r.field}">${units.map(u => `<option value="${u}"${r.unit === u ? ' selected' : ''}>${esc(DRAWING_UNITS[u])}</option>`).join('')}</select></label></div><label class="check"><input type="checkbox" data-drawing-confirm="${r.field}">Размер и единица проверены</label></article>`;
     }).join('');
   }
-  function cancel() { generation++; request?.abort(); request = null; $('#apply-drawing').disabled = false; }
+  function cancel() { generation++; request?.abort(); request = null; $('#apply-drawing').disabled = false; $('#recognize-drawing').disabled = !file || file.type === 'application/pdf'; }
   $('#drawing-file').addEventListener('change', event => {
     cancel(); file = event.target.files[0]; $('#drawing-review').hidden = true; $('#drawing-status').hidden = true;
     if (url) URL.revokeObjectURL(url); url = undefined;
@@ -86,5 +86,5 @@ export function mountDrawing(root, onApply) {
       document.getElementById('object').scrollIntoView({ behavior: 'smooth' });
     } catch (error) { status(error.message); }
   });
-  window.addEventListener('pagehide', () => { cancel(); if (url) URL.revokeObjectURL(url); });
+  window.addEventListener('pagehide', event => { cancel(); if (url && !event.persisted) URL.revokeObjectURL(url); });
 }
