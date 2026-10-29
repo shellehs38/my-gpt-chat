@@ -1,10 +1,10 @@
 # Версионируемая память «СВОИ ЛЮДИ»
 
-Краткие правила для индекса; подробности — в указанных документах. Управляемые секции синхронизирует memory:index. Общий ADR движка ограничен 8000 символами, включая его собственные секции.
+Краткие правила индекса; подробности в документах. memory:index синхронизирует секции. Общий ADR движка ограничен 8000 символами.
 
 ## PROJECT BASELINE
 
-ООО «СВОИ ЛЮДИ», Иркутск. Next.js 15, React 19, TypeScript, Node >=22. UI app/page.tsx; API auth/chat/ledger. OpenAI только на сервере; подписка ChatGPT не оплачивает API. MAX — отдельная интеграция.
+ООО «СВОИ ЛЮДИ», Иркутск. Next.js 15/React 19/TypeScript/Node >=22. app/page.tsx; API auth/chat/ledger. OpenAI только серверный, API оплачивается отдельно. MAX — отдельная интеграция.
 
 ## DOMAIN RULES
 
@@ -12,11 +12,11 @@ lib/estimate.ts: точные деньги, неизвестное не ноль
 
 ## ASSISTANT MODES
 
-Режимы general/estimate/engineering/facade/business/documents: планирование/сметы/технологии/фасады/учёт и продажи/документы. Роли в assistant-modes.ts, server/chat.ts. modeState разделяет диалоги, черновики, ответы и повторы; поздний ответ — в исходную вкладку. Новый предмет важнее прошлой темы. calculation=none не пересчитывает документы; старые версии совместимы.
+Режимы general/estimate/engineering/facade/business/documents независимы (assistant-modes.ts, server/chat.ts). modeState разделяет диалоги/черновики/ответы/повторы; поздний ответ — в исходную вкладку. Новый предмет важнее прошлой темы. calculation=none не пересчитывает документы; старые версии совместимы.
 
 ## ACCESS AND STORAGE
 
-API: вход владельца, HttpOnly-сессия, проверка origin. Ключи/env не в GitHub, браузере или логах. Проекты/версии браузера переносятся JSON. Sheets использует отдельный сервисный аккаунт; подключение Drive к ChatGPT не даёт доступ сайту. Лимиты процесса не глобальный бюджет.
+API: вход владельца, HttpOnly-сессия, проверка origin. Ключи/env не в GitHub, браузере или логах. Проекты/версии браузера переносятся JSON. Sheets использует отдельный сервисный аккаунт; подключение Drive к ChatGPT не даёт доступ сайту. Лимиты процесса локальны.
 
 ## COMPANY DOCUMENT BRANDING
 
@@ -24,11 +24,11 @@ API: вход владельца, HttpOnly-сессия, проверка origin
 
 ## GOOGLE DRIVE CONNECTION STAGE
 
-OAuth openid+drive.file, стабильный owner. DriveAutosave: неизменяемые JSON, outbox/ID повтора; saved после проверки папки/размера/SHA-256/чтения. Ветки до выбора; local clear — пауза без удаления облака. Фото не интегрированы. Калькуляторы отдельно от диалога/Drive.
+OAuth openid+drive.file, стабильный owner. DriveAutosave: неизменяемые JSON, outbox/ID; saved после проверки папки/размера/SHA-256/чтения. Ветки до выбора; local clear — пауза, не удаление облака. Фото не интегрированы; калькуляторы отдельно от Drive.
 
 ## DEVELOPMENT MEMORY
 
-Codebase Memory 0.12.1 — вспомогательный индекс. AGENTS.md, исходники и тесты приоритетнее графа. Проверять свежесть/охват, после изменений memory:index и memory:check. Не индексировать клиентов, секреты и переписку. docs/CODEBASE_MEMORY.md.
+Codebase Memory 0.12.1: AGENTS.md, код и тесты приоритетнее графа. Проверять свежесть/охват, после правок memory:index и memory:check. Клиентов/секреты/переписку не индексировать. docs/CODEBASE_MEMORY.md.
 
 ## SHARED CHAT MEMORY
 
@@ -45,3 +45,7 @@ system-catalog.mjs и lib/server/facade-catalog.ts: системы/матери�
 ## HOUSE CONSTRUCTION CALCULATOR
 
 /calculators/ — общий вход из помощника, переключатель дом/фасад. public/house-calculator/index.html: брус/каркас/пенобетон, 15 этапов под ключ. Углы один раз; каркас по спецификации, фронтоны отдельно. Неизвестные цены/объёмы/запасы пустые; работы без запаса. Бригада/субподряд/накладные/налог/вознаграждение руководителя/прибыль ООО раздельно, без автоналога и 40%. Обсадку не задваивать. Карточки/прайсы 29.10.2026 — справка, не ведомости/КП. JSON/localStorage отдельно от Drive/Sheets; отчёт с PNG. Чат движок не вызывает. docs/HOUSE_CALCULATOR.md.
+
+## NATIVE APPLICATION PREVIEW
+
+native/: Flutter iOS+Win. Native bearer/chat, local history. Sync pending.

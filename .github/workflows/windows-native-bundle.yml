@@ -1,0 +1,277 @@
+# Install this file as .github/workflows/windows-native-bundle.yml.
+# Repackages the already reviewed build; it never checks out or rebuilds app source.
+name: Windows native complete bundle
+
+on:
+  push:
+    branches:
+      - codex/native-ios-windows
+    paths:
+      - .github/workflows/windows-native-bundle.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: windows-native-bundle-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bundle:
+    name: Package Windows x64 app and runtime
+    runs-on: windows-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      GH_TOKEN: ${{ github.token }}
+      SOURCE_REPOSITORY: shellehs38/my-gpt-chat
+      SOURCE_RUN_ID: '40362998545'
+      SOURCE_WINDOWS_JOB_ID: '121714218151'
+      SOURCE_CHECKS_JOB_ID: '121713123005'
+      SOURCE_COMMIT: 42e12c9304b35525cb8022558058d55c1400cf8e
+      SOURCE_ARTIFACT_ID: '12668628254'
+      SOURCE_ARTIFACT_NAME: windows-x64-portable-42e12c9304b35525cb8022558058d55c1400cf8e
+      SOURCE_ARCHIVE_SHA256: 765e40a7c25641532f824d046d2afe7b36ecce589a1b20de25a3a65e4a804f4f
+
+    steps:
+      - name: Download and verify the exact reviewed build
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          $run = gh run view $env:SOURCE_RUN_ID --repo $env:SOURCE_REPOSITORY --json status,headSha,jobs | ConvertFrom-Json
+          if ($run.status -ne 'completed' -or $run.headSha -ne $env:SOURCE_COMMIT) {
+            throw 'The source run is not completed at the reviewed commit.'
+          }
+          # The unrelated iOS job was cancelled. Verify the exact successful
+          # Windows and check jobs, rather than requiring overall run success.
+          foreach ($expectedJobId in @($env:SOURCE_WINDOWS_JOB_ID, $env:SOURCE_CHECKS_JOB_ID)) {
+            $matchedJobs = @($run.jobs | Where-Object { [string]$_.databaseId -eq $expectedJobId })
+            if ($matchedJobs.Count -ne 1 -or
+                $matchedJobs[0].status -ne 'completed' -or
+                $matchedJobs[0].conclusion -ne 'success') {
+              throw "The required source job was not successful: $expectedJobId"
+            }
+          }
+          $artifactEndpoint = "repos/$env:SOURCE_REPOSITORY/actions/artifacts/$env:SOURCE_ARTIFACT_ID"
+          $artifact = gh api $artifactEndpoint | ConvertFrom-Json
+          if ([string]$artifact.id -ne $env:SOURCE_ARTIFACT_ID -or
+              $artifact.name -ne $env:SOURCE_ARTIFACT_NAME -or
+              $artifact.expired -or
+              [string]$artifact.workflow_run.id -ne $env:SOURCE_RUN_ID -or
+              $artifact.workflow_run.head_sha -ne $env:SOURCE_COMMIT) {
+            throw 'The source artifact provenance does not match the reviewed build.'
+          }
+          if ($artifact.digest -and $artifact.digest -ne "sha256:$env:SOURCE_ARCHIVE_SHA256") {
+            throw 'The source artifact metadata digest does not match.'
+          }
+          $archive = Join-Path $env:RUNNER_TEMP 'reviewed-windows-build.zip'
+          $headers = @{
+            Authorization = "Bearer $env:GH_TOKEN"
+            Accept = 'application/vnd.github+json'
+            'X-GitHub-Api-Version' = '2022-11-28'
+          }
+          # Download raw ZIP bytes so Get-FileHash verifies the original archive.
+          # gh run download extracts immediately and cannot verify that ZIP hash.
+          Invoke-WebRequest -Uri "https://api.github.com/$artifactEndpoint/zip" -Headers $headers -OutFile $archive
+          $actualHash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualHash -ne $env:SOURCE_ARCHIVE_SHA256) {
+            throw "Source archive SHA256 mismatch: $actualHash"
+          }
+          $bundle = Join-Path $env:GITHUB_WORKSPACE 'bundle'
+          New-Item -ItemType Directory -Path $bundle | Out-Null
+          Expand-Archive -LiteralPath $archive -DestinationPath $bundle
+          $required = @(
+            'svoi_lyudi_native.exe', 'flutter_windows.dll', 'dartjni.dll',
+            'file_selector_windows_plugin.dll', 'share_plus_plugin.dll',
+            'url_launcher_windows_plugin.dll', 'data/app.so', 'data/icudtl.dat',
+            'data/flutter_assets/assets/manual/manual.pdf'
+          )
+          foreach ($relative in $required) {
+            if (-not (Test-Path -LiteralPath (Join-Path $bundle $relative) -PathType Leaf)) {
+              throw "Required application file is missing: $relative"
+            }
+          }
+          $manualPages = @(Get-ChildItem -LiteralPath (Join-Path $bundle 'data/flutter_assets/assets/manual') -Filter 'page-*.png' -File)
+          if ($manualPages.Count -ne 26) { throw 'Expected all 26 bundled manual pages.' }
+          "Verified source artifact $env:SOURCE_ARTIFACT_ID from commit $env:SOURCE_COMMIT." | Add-Content $env:GITHUB_STEP_SUMMARY
+
+      - name: Add Microsoft-signed app-local VC++ runtime from Visual Studio Redist
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
+          if (-not (Test-Path -LiteralPath $vswhere -PathType Leaf)) { throw 'vswhere.exe is unavailable.' }
+          $vsInstall = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $vsInstall) { throw 'Visual Studio with the x64 C++ tools is unavailable.' }
+          $redistRoot = Join-Path $vsInstall 'VC/Redist/MSVC'
+          $runtimeNames = @('msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll')
+          # Only the official release Redist/x64 CRT directories are eligible.
+          # Never copy System32, debug_nonredist, developer tools or Java files.
+          $candidates = @(
+            foreach ($versionDirectory in Get-ChildItem -LiteralPath $redistRoot -Directory) {
+              $x64 = Join-Path $versionDirectory.FullName 'x64'
+              if (Test-Path -LiteralPath $x64 -PathType Container) {
+                foreach ($crt in Get-ChildItem -LiteralPath $x64 -Directory -Filter 'Microsoft.VC*.CRT') {
+                  $missing = @($runtimeNames | Where-Object { -not (Test-Path -LiteralPath (Join-Path $crt.FullName $_) -PathType Leaf) })
+                  if ($missing.Count -eq 0) {
+                    [pscustomobject]@{
+                      Path = $crt.FullName
+                      Version = (Get-Item -LiteralPath (Join-Path $crt.FullName 'msvcp140.dll')).VersionInfo.FileVersionRaw
+                    }
+                  }
+                }
+              }
+            }
+          )
+          $selected = $candidates | Sort-Object Version -Descending | Select-Object -First 1
+          if (-not $selected) { throw 'An official x64 Visual C++ CRT Redist directory was not found.' }
+          $bundle = Join-Path $env:GITHUB_WORKSPACE 'bundle'
+          $runtimeManifest = foreach ($name in $runtimeNames) {
+            $source = Join-Path $selected.Path $name
+            $signature = Get-AuthenticodeSignature -LiteralPath $source
+            if ($signature.Status -ne 'Valid' -or
+                $signature.SignerCertificate.Subject -notmatch '(^|,\s*)O=Microsoft Corporation(,|$)') {
+              throw "The runtime DLL does not have a valid Microsoft signature: $name ($($signature.Status))"
+            }
+            $destination = Join-Path $bundle $name
+            Copy-Item -LiteralPath $source -Destination $destination
+            $sourceHash = (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash
+            $copyHash = (Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash
+            if ($copyHash -ne $sourceHash) { throw "Runtime DLL copy verification failed: $name" }
+            "$($copyHash.ToLowerInvariant())  $name  version=$((Get-Item -LiteralPath $source).VersionInfo.FileVersion)"
+          }
+          $runtimeManifest | Set-Content -LiteralPath (Join-Path $bundle 'VC-RUNTIME-SHA256.txt') -Encoding utf8
+          "Added three Microsoft-signed x64 CRT DLLs, version $($selected.Version), from the Visual Studio Redist directory." | Add-Content $env:GITHUB_STEP_SUMMARY
+
+      - name: Add Russian startup instructions and provenance
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $bundle = Join-Path $env:GITHUB_WORKSPACE 'bundle'
+          @'
+          СВОИ ЛЮДИ — предварительная нативная версия для Windows x64
+
+          1. Распакуйте архив целиком в обычную папку на Windows 10/11 x64.
+          2. Запустите svoi_lyudi_native.exe двойным щелчком.
+          3. Сохраняйте рядом с EXE все DLL-файлы и папку data со всем содержимым.
+             Переносите всю папку приложения целиком, а не один EXE.
+
+          Объекты и расчёты сохраняются локально на этом устройстве.
+          Калькулятор, встроенные инструкции и создание PDF работают без интернета.
+          Данные приложения хранятся в пользовательской папке Windows отдельно от
+          этой поставки. Для переноса данных используйте экспорт и импорт в приложении.
+          Папка data рядом с EXE содержит обязательные ресурсы приложения.
+
+          Живой ИИ и синхронизация между iPhone и компьютером пока не подключены.
+          Это предварительная версия: перед рабочим применением проверьте расчёты.
+          Встроенный PDF производителя: «Металл Профиль», 3-е издание, 2019, 26 страниц.
+          Проверяйте актуальность инструкции для конкретного изделия. Материалы
+          общего назначения; данные реальных клиентов в поставку не включены.
+
+          В поставку включены подписанные Microsoft библиотеки Visual C++ runtime.
+          Java и браузерная оболочка в поставку не включены.
+          Приложение не подписано сертификатом издателя: Windows может показать
+          предупреждение SmartScreen. Проверяйте источник и контрольные суммы.
+
+          Автоматическая проверка CI подтверждает только запуск процесса в течение
+          8 секунд и загрузку приложенных VC++ DLL. Она не проверяет изображение окна,
+          клики, печать, экспорт PDF или работу на чистом пользовательском компьютере.
+          '@ | Set-Content -LiteralPath (Join-Path $bundle 'START-HERE.txt') -Encoding utf8
+          @"
+          Source repository: https://github.com/$env:SOURCE_REPOSITORY
+          Source commit: $env:SOURCE_COMMIT
+          Source build run: https://github.com/$env:SOURCE_REPOSITORY/actions/runs/$env:SOURCE_RUN_ID
+          Successful Windows job: $env:SOURCE_WINDOWS_JOB_ID
+          Successful analyze/test job: $env:SOURCE_CHECKS_JOB_ID
+          Source artifact ID: $env:SOURCE_ARTIFACT_ID
+          Source archive SHA256: $env:SOURCE_ARCHIVE_SHA256
+          App source and original application binaries were not rebuilt or modified.
+
+          Microsoft app-local runtime deployment and servicing guidance:
+          https://learn.microsoft.com/en-us/cpp/windows/redistributing-visual-cpp-files
+          Microsoft Visual Studio distributable-code list and license conditions:
+          https://learn.microsoft.com/en-us/visualstudio/releases/2022/redistribution
+          https://visualstudio.microsoft.com/license-terms/
+
+          The three unmodified CRT DLLs are copied only from Visual Studio's
+          VC/Redist/MSVC/*/x64/Microsoft.VC*.CRT directories and their valid Microsoft
+          Authenticode signatures are checked. Their hashes are in VC-RUNTIME-SHA256.txt.
+          App-local CRT copies must be updated by redistributing an updated bundle;
+          they do not receive the central Visual C++ Redistributable's automatic updates.
+          Redistribution remains subject to the applicable Visual Studio license terms.
+          "@ | Set-Content -LiteralPath (Join-Path $bundle 'BUILD-INFO.txt') -Encoding utf8
+
+      - name: Smoke test the native process for eight seconds
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $bundle = Join-Path $env:GITHUB_WORKSPACE 'bundle'
+          # Child processes inherit the error mode: avoid a loader/WER error dialog
+          # leaving an otherwise failed process alive and producing a false success.
+          Add-Type -TypeDefinition @'
+          using System.Runtime.InteropServices;
+          public static class NativeBundleErrorMode {
+            [DllImport("kernel32.dll")]
+            public static extern uint SetErrorMode(uint mode);
+          }
+          '@
+          $previousMode = [NativeBundleErrorMode]::SetErrorMode(0x0001 -bor 0x0002 -bor 0x8000)
+          $ownedProcess = $null
+          try {
+            $startInfo = [Diagnostics.ProcessStartInfo]::new()
+            $startInfo.FileName = Join-Path $bundle 'svoi_lyudi_native.exe'
+            $startInfo.WorkingDirectory = $bundle
+            $startInfo.UseShellExecute = $false
+            # Modify only the child's environment; leave the runner environment intact.
+            foreach ($variable in @($startInfo.Environment.Keys)) {
+              if ($variable -like 'JAVA_HOME*' -or $variable -like 'JDK_HOME*' -or $variable -like 'JRE_HOME*') {
+                [void]$startInfo.Environment.Remove($variable)
+              }
+            }
+            $startInfo.Environment['PATH'] = ($startInfo.Environment['PATH'] -split ';' | Where-Object {
+              $_ -notmatch '(?i)(java|jdk|jre|temurin|adoptium|corretto|zulu)'
+            }) -join ';'
+            $ownedProcess = [Diagnostics.Process]::Start($startInfo)
+            if ($null -eq $ownedProcess) { throw 'The native application process could not be started.' }
+            if ($ownedProcess.WaitForExit(8000)) {
+              throw "Native application exited during the startup smoke test; exit code $($ownedProcess.ExitCode)."
+            }
+            $ownedProcess.Refresh()
+            if ($ownedProcess.HasExited) { throw 'Native application exited before module inspection.' }
+            # Hosted Windows has a global CRT installed. Verify this process loaded
+            # our copies, so system-installed runtime cannot hide missing bundle DLLs.
+            $modules = @($ownedProcess.Modules)
+            if (@($modules | Where-Object { $_.ModuleName -ieq 'jvm.dll' }).Count -ne 0) {
+              throw 'The native startup loaded a JVM despite the Java-free child environment.'
+            }
+            foreach ($name in @('msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll')) {
+              $expected = [IO.Path]::GetFullPath((Join-Path $bundle $name))
+              $loaded = @($modules | Where-Object { $_.ModuleName -ieq $name })
+              if ($loaded.Count -ne 1 -or [IO.Path]::GetFullPath($loaded[0].FileName) -ine $expected) {
+                throw "The native process did not load its app-local runtime DLL: $name"
+              }
+            }
+            if ($ownedProcess.HasExited) { throw 'Native application exited during module inspection.' }
+            'Startup smoke PASS: native process remained alive for 8 seconds and loaded all three app-local CRT DLLs. Java home variables and Java PATH entries were removed only for the child process, and no jvm.dll was loaded. This is not an interactive UI test or a clean-Windows acceptance test.' | Add-Content $env:GITHUB_STEP_SUMMARY
+          }
+          finally {
+            # Terminate only the process started above and its descendants.
+            if ($null -ne $ownedProcess) {
+              if (-not $ownedProcess.HasExited) {
+                $ownedProcess.Kill($true)
+                if (-not $ownedProcess.WaitForExit(5000)) { throw 'The owned smoke-test process did not stop.' }
+              }
+              $ownedProcess.Dispose()
+            }
+            [void][NativeBundleErrorMode]::SetErrorMode($previousMode)
+          }
+
+      - name: Upload the complete portable app directory
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: svoi-lyudi-windows-complete
+          path: bundle/
+          if-no-files-found: error
+          retention-days: 14

@@ -1,0 +1,300 @@
+name: Native app preview · iPhone and Windows
+
+on:
+  push:
+    branches: [codex/native-ios-windows]
+    paths:
+      - 'native/**'
+      - '.github/workflows/native-app-preview.yml'
+  workflow_dispatch:
+    inputs:
+      build_windows:
+        description: Build Windows x64 portable app
+        required: true
+        default: true
+        type: boolean
+      build_ios_unsigned:
+        description: Compile iOS without signing (not installable IPA)
+        required: true
+        default: true
+        type: boolean
+
+defaults:
+  run:
+    working-directory: native
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-builds-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: 3.47.8
+  CI: true
+
+jobs:
+  checks:
+    name: Analyze and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out reviewed source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Set up Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: false
+      - name: Show SDK version
+        run: flutter --version
+      - name: Resolve locked dependencies
+        run: flutter pub get --enforce-lockfile
+      - name: Analyze source
+        run: flutter analyze --fatal-infos
+      - name: Run tests
+        run: flutter test
+
+  windows:
+    name: Windows x64 portable
+    needs: checks
+    if: ${{ github.event_name == 'push' || inputs.build_windows }}
+    runs-on: windows-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: native
+    steps:
+      - name: Check out reviewed source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Set up Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: false
+      - name: Enable Windows desktop
+        run: flutter config --enable-windows-desktop
+      - name: Resolve locked dependencies
+        run: flutter pub get --enforce-lockfile
+      - name: Build release app
+        run: flutter build windows --release
+      - name: Add Microsoft-signed app-local VC++ runtime from Visual Studio Redist
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
+          if (-not (Test-Path -LiteralPath $vswhere -PathType Leaf)) { throw 'vswhere.exe is unavailable.' }
+          $vsInstall = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $vsInstall) { throw 'Visual Studio with the x64 C++ tools is unavailable.' }
+          $redistRoot = Join-Path $vsInstall 'VC/Redist/MSVC'
+          $runtimeNames = @('msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll')
+          # Only the official release Redist/x64 CRT directories are eligible.
+          # Never copy System32, debug_nonredist, developer tools or Java files.
+          $candidates = @(
+            foreach ($versionDirectory in Get-ChildItem -LiteralPath $redistRoot -Directory) {
+              $x64 = Join-Path $versionDirectory.FullName 'x64'
+              if (Test-Path -LiteralPath $x64 -PathType Container) {
+                foreach ($crt in Get-ChildItem -LiteralPath $x64 -Directory -Filter 'Microsoft.VC*.CRT') {
+                  $missing = @($runtimeNames | Where-Object { -not (Test-Path -LiteralPath (Join-Path $crt.FullName $_) -PathType Leaf) })
+                  if ($missing.Count -eq 0) {
+                    [pscustomobject]@{
+                      Path = $crt.FullName
+                      Version = (Get-Item -LiteralPath (Join-Path $crt.FullName 'msvcp140.dll')).VersionInfo.FileVersionRaw
+                    }
+                  }
+                }
+              }
+            }
+          )
+          $selected = $candidates | Sort-Object Version -Descending | Select-Object -First 1
+          if (-not $selected) { throw 'An official x64 Visual C++ CRT Redist directory was not found.' }
+          $bundle = Join-Path $env:GITHUB_WORKSPACE 'native/build/windows/x64/runner/Release'
+          $runtimeManifest = foreach ($name in $runtimeNames) {
+            $source = Join-Path $selected.Path $name
+            $signature = Get-AuthenticodeSignature -LiteralPath $source
+            if ($signature.Status -ne 'Valid' -or
+                $signature.SignerCertificate.Subject -notmatch '(^|,\s*)O=Microsoft Corporation(,|$)') {
+              throw "The runtime DLL does not have a valid Microsoft signature: $name ($($signature.Status))"
+            }
+            $destination = Join-Path $bundle $name
+            Copy-Item -LiteralPath $source -Destination $destination
+            $sourceHash = (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash
+            $copyHash = (Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash
+            if ($copyHash -ne $sourceHash) { throw "Runtime DLL copy verification failed: $name" }
+            "$($copyHash.ToLowerInvariant())  $name  version=$((Get-Item -LiteralPath $source).VersionInfo.FileVersion)"
+          }
+          $runtimeManifest | Set-Content -LiteralPath (Join-Path $bundle 'VC-RUNTIME-SHA256.txt') -Encoding utf8
+          "Added three Microsoft-signed x64 CRT DLLs, version $($selected.Version), from the Visual Studio Redist directory." | Add-Content $env:GITHUB_STEP_SUMMARY
+
+      - name: Add Russian startup instructions and provenance
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $bundle = Join-Path $env:GITHUB_WORKSPACE 'native/build/windows/x64/runner/Release'
+          @'
+          СВОИ ЛЮДИ — предварительная нативная версия для Windows x64
+
+          1. Распакуйте архив целиком в обычную папку на Windows 10/11 x64.
+          2. Запустите svoi_lyudi_native.exe двойным щелчком.
+          3. Сохраняйте рядом с EXE все DLL-файлы и папку data со всем содержимым.
+             Переносите всю папку приложения целиком, а не один EXE.
+
+          Объекты и расчёты сохраняются локально на этом устройстве.
+          Калькулятор, встроенные инструкции и создание PDF работают без интернета.
+          Данные приложения хранятся в пользовательской папке Windows отдельно от
+          этой поставки. Для переноса данных используйте экспорт и импорт в приложении.
+          Папка data рядом с EXE содержит обязательные ресурсы приложения.
+
+          Для живого диалога нужны интернет, пароль помощника и настроенная
+          серверная часть. Доступность сервера проверяется при входе.
+          Пароль не сохраняется в файлы приложения. Сессия входа хранится только
+          в памяти процесса, действует до 12 часов и сбрасывается при закрытии.
+          Истории диалогов сохраняются локально отдельно по объектам и направлениям.
+          Облачная синхронизация между iPhone и компьютером пока не подключена.
+          Это предварительная версия: перед рабочим применением проверьте расчёты.
+          Встроенный PDF производителя: «Металл Профиль», 3-е издание, 2019, 26 страниц.
+          Проверяйте актуальность инструкции для конкретного изделия. Материалы
+          общего назначения; данные реальных клиентов в поставку не включены.
+
+          В поставку включены подписанные Microsoft библиотеки Visual C++ runtime.
+          Java и браузерная оболочка в поставку не включены.
+          Приложение не подписано сертификатом издателя: Windows может показать
+          предупреждение SmartScreen. Проверяйте источник и контрольные суммы.
+
+          Автоматическая проверка CI подтверждает только запуск процесса в течение
+          8 секунд и загрузку приложенных VC++ DLL. Она не проверяет изображение окна,
+          клики, печать, экспорт PDF или работу на чистом пользовательском компьютере.
+          '@ | Set-Content -LiteralPath (Join-Path $bundle 'START-HERE.txt') -Encoding utf8
+          @"
+          Source repository: https://github.com/$env:GITHUB_REPOSITORY
+          Source commit: $env:GITHUB_SHA
+          Source build run: https://github.com/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID
+          Workflow: $env:GITHUB_WORKFLOW
+          Flutter version: $env:FLUTTER_VERSION
+          Platform: Windows x64 release, built from this workflow checkout.
+          The bundled runtime DLLs are unmodified Microsoft-signed release binaries.
+          This package does not confirm deployment or availability of the chat server.
+
+          Microsoft app-local runtime deployment and servicing guidance:
+          https://learn.microsoft.com/en-us/cpp/windows/redistributing-visual-cpp-files
+          Microsoft Visual Studio distributable-code list and license conditions:
+          https://learn.microsoft.com/en-us/visualstudio/releases/2022/redistribution
+          https://visualstudio.microsoft.com/license-terms/
+
+          The three unmodified CRT DLLs are copied only from Visual Studio's
+          VC/Redist/MSVC/*/x64/Microsoft.VC*.CRT directories and their valid Microsoft
+          Authenticode signatures are checked. Their hashes are in VC-RUNTIME-SHA256.txt.
+          App-local CRT copies must be updated by redistributing an updated bundle;
+          they do not receive the central Visual C++ Redistributable's automatic updates.
+          Redistribution remains subject to the applicable Visual Studio license terms.
+          "@ | Set-Content -LiteralPath (Join-Path $bundle 'BUILD-INFO.txt') -Encoding utf8
+
+      - name: Smoke test the native process for eight seconds
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $bundle = Join-Path $env:GITHUB_WORKSPACE 'native/build/windows/x64/runner/Release'
+          # Child processes inherit the error mode: avoid a loader/WER error dialog
+          # leaving an otherwise failed process alive and producing a false success.
+          Add-Type -TypeDefinition @'
+          using System.Runtime.InteropServices;
+          public static class NativeBundleErrorMode {
+            [DllImport("kernel32.dll")]
+            public static extern uint SetErrorMode(uint mode);
+          }
+          '@
+          $previousMode = [NativeBundleErrorMode]::SetErrorMode(0x0001 -bor 0x0002 -bor 0x8000)
+          $ownedProcess = $null
+          try {
+            $startInfo = [Diagnostics.ProcessStartInfo]::new()
+            $startInfo.FileName = Join-Path $bundle 'svoi_lyudi_native.exe'
+            $startInfo.WorkingDirectory = $bundle
+            $startInfo.UseShellExecute = $false
+            # Modify only the child's environment; leave the runner environment intact.
+            foreach ($variable in @($startInfo.Environment.Keys)) {
+              if ($variable -like 'JAVA_HOME*' -or $variable -like 'JDK_HOME*' -or $variable -like 'JRE_HOME*') {
+                [void]$startInfo.Environment.Remove($variable)
+              }
+            }
+            $startInfo.Environment['PATH'] = ($startInfo.Environment['PATH'] -split ';' | Where-Object {
+              $_ -notmatch '(?i)(java|jdk|jre|temurin|adoptium|corretto|zulu)'
+            }) -join ';'
+            $ownedProcess = [Diagnostics.Process]::Start($startInfo)
+            if ($null -eq $ownedProcess) { throw 'The native application process could not be started.' }
+            if ($ownedProcess.WaitForExit(8000)) {
+              throw "Native application exited during the startup smoke test; exit code $($ownedProcess.ExitCode)."
+            }
+            $ownedProcess.Refresh()
+            if ($ownedProcess.HasExited) { throw 'Native application exited before module inspection.' }
+            # Hosted Windows has a global CRT installed. Verify this process loaded
+            # our copies, so system-installed runtime cannot hide missing bundle DLLs.
+            $modules = @($ownedProcess.Modules)
+            if (@($modules | Where-Object { $_.ModuleName -ieq 'jvm.dll' }).Count -ne 0) {
+              throw 'The native startup loaded a JVM despite the Java-free child environment.'
+            }
+            foreach ($name in @('msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll')) {
+              $expected = [IO.Path]::GetFullPath((Join-Path $bundle $name))
+              $loaded = @($modules | Where-Object { $_.ModuleName -ieq $name })
+              if ($loaded.Count -ne 1 -or [IO.Path]::GetFullPath($loaded[0].FileName) -ine $expected) {
+                throw "The native process did not load its app-local runtime DLL: $name"
+              }
+            }
+            if ($ownedProcess.HasExited) { throw 'Native application exited during module inspection.' }
+            'Startup smoke PASS: native process remained alive for 8 seconds and loaded all three app-local CRT DLLs. Java home variables and Java PATH entries were removed only for the child process, and no jvm.dll was loaded. This is not an interactive UI test or a clean-Windows acceptance test.' | Add-Content $env:GITHUB_STEP_SUMMARY
+          }
+          finally {
+            # Terminate only the process started above and its descendants.
+            if ($null -ne $ownedProcess) {
+              if (-not $ownedProcess.HasExited) {
+                $ownedProcess.Kill($true)
+                if (-not $ownedProcess.WaitForExit(5000)) { throw 'The owned smoke-test process did not stop.' }
+              }
+              $ownedProcess.Dispose()
+            }
+            [void][NativeBundleErrorMode]::SetErrorMode($previousMode)
+          }
+
+      - name: Upload complete app directory
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: svoi-lyudi-windows-complete-${{ github.sha }}
+          path: native/build/windows/x64/runner/Release/
+          if-no-files-found: error
+          retention-days: 14
+
+  ios_unsigned:
+    name: iOS compile only (unsigned)
+    needs: checks
+    if: ${{ github.event_name == 'push' || inputs.build_ios_unsigned }}
+    runs-on: macos-15-intel
+    timeout-minutes: 45
+    steps:
+      - name: Check out reviewed source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Set up Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: false
+      - name: Resolve locked dependencies
+        run: flutter pub get --enforce-lockfile
+      - name: Compile without signing
+        run: flutter build ios --release --no-codesign
+      - name: Preserve unsigned app bundle permissions
+        run: tar -czf build/ios/ios-unsigned-compile-only.tar.gz -C build/ios/iphoneos Runner.app
+      - name: Upload explicitly unsigned compile artifact
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: ios-unsigned-COMPILE-ONLY-${{ github.sha }}
+          path: native/build/ios/ios-unsigned-compile-only.tar.gz
+          if-no-files-found: error
+          retention-days: 14
