@@ -20,7 +20,8 @@
     "pretest": "npm run plugin:check && npm run knowledge:export && npm run catalog:export && npm run memory:export",
     "predev": "npm run plugin:check && npm run knowledge:export && npm run catalog:export && npm run memory:export",
     "catalog:export": "node scripts/export-facade-catalog.mjs",
-    "test:calculator": "node --test calculator-tests/*.test.mjs"
+    "test:calculator": "node --test calculator-tests/*.test.mjs",
+    "test:houses": "node --test calculator-tests/house-*.test.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.1",
