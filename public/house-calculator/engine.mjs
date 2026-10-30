@@ -146,7 +146,7 @@ function rowTemplate(technology, foundationType = 'manual', gableStructure = 'sa
 export function createProject(technology = 'timber') {
   if (!Object.hasOwn(TECHNOLOGIES, technology)) throw Error('Неизвестная технология.');
   return {
-    schemaVersion: SCHEMA_VERSION, id: uid(), name: '', address: '', technology,
+    schemaVersion: SCHEMA_VERSION, id: uid(), name: '', address: '', technology, demonstration: false,
     geometry: { length: '', width: '', wallHeightSum: '', rectOpenings: '', gableArea: '', gableOpenings: '', gableStructure: 'same', wallThicknessMm: '', solidReplacements: '', frameLumber: '', insulationArea: '', insulationThicknessMm: '', floorArea: '', blockLengthMm: '', blockHeightMm: '', blockWidthMm: '', verticalJointMm: '', horizontalJointMm: '' },
     foundation: { type: 'manual', length: '', width: '', heightMm: '', count: '', volume: '', formworkMode: 'manual', formworkArea: '', formworkHeightMm: '', formworkSideLength: '', formworkEndCount: '' },
     roof: { mode: 'direct', area: '', ridgeLength: '', span: '', angle: '', eave: '', endOverhang: '', holes: '' },
@@ -425,6 +425,7 @@ export function parseProject(text) {
     ids.add(clean.id); return clean;
   });
   base.reviewed = p.reviewed === true;
+  base.demonstration = p.demonstration === true;
   // Reference metadata is display-only and is never trusted as a source of quantities.
   if (record(p.reference)) {
     base.reference = {};

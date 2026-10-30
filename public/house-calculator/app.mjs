@@ -3,9 +3,11 @@ import { PROJECTS, referenceProject } from './project-catalog.mjs';
 import { createReport, escapeHtml as esc } from './report.mjs';
 import { readStorage, saveStorage, snapshot, STORAGE_KEY } from './storage.mjs';
 import { PRICE_SOURCES } from './price-sources.mjs';
+import { mountDrawing } from './drawing-ui.mjs';
+import { demonstrationProject, DEMO_NOTICE } from './demo.mjs';
 
 const $ = selector => document.querySelector(selector);
-let project = createProject(), versions = [], revision = null, paused = false, timer, drawingUrl, logo;
+let project = createProject(), versions = [], revision = null, paused = false, timer, logo;
 function message(text) { $('#save-status').textContent = text; }
 function pause(error) {
   paused = true; $('#storage-warning').hidden = false;
@@ -66,7 +68,7 @@ function renderRows() {
   $('#stage-switches').innerHTML = Object.entries(STAGES).map(([key, name]) => `<label><input type="checkbox" data-stage="${key}"${checked(project.stages[key])}>${esc(name)}</label>`).join('');
   $('#estimate-rows').innerHTML = Object.entries(STAGES).filter(([key]) => project.stages[key]).map(([stage, name]) => {
     const rows = project.rows.filter(r => r.stage === stage);
-    return `<details class="estimate-stage" id="stage-${stage}" data-stage="${stage}"${openStages.has(stage) || first && stage === 'walls' ? ' open' : ''}><summary>${esc(name)}<small>${rows.filter(r => r.enabled).length} позиций включено</small></summary>${rows.map(row => {
+    return `<details class="estimate-stage" id="stage-${stage}" data-stage="${stage}"${openStages.has(stage) || first && stage === 'walls' ? ' open' : ''}><summary>${esc(name)}<small>Включено: ${rows.filter(r => r.enabled).length}</small></summary>${rows.map(row => {
       const prefix = `row-${row.id}`;
       return `<article class="estimate-row${row.enabled ? '' : ' disabled'}" id="${esc(prefix)}" data-row-id="${esc(row.id)}"><div class="row-head"><label><input type="checkbox" data-row="${esc(row.id)}" data-key="enabled" aria-label="Включить ${esc(row.name)}"${checked(row.enabled)}><input class="row-name" data-row="${esc(row.id)}" data-key="name" value="${esc(row.name)}" maxlength="1000" aria-label="Наименование позиции"></label>${row.template ? '' : `<button class="small-button" data-delete="${esc(row.id)}" aria-label="Удалить позицию ${esc(row.name)}">Удалить</button>`}</div><p class="row-group">${esc(GROUPS[row.group])} · ${esc(row.unit || 'единица не указана')}</p><div class="row-main"><label>${row.group === 'materials' ? 'К закупке' : 'Объём'}${row.metric === 'manual' ? `<input data-row="${esc(row.id)}" data-key="quantity" inputmode="decimal" value="${esc(row.quantity)}" placeholder="Количество" aria-label="Количество ${esc(row.name)}">` : `<output data-quantity="${esc(row.id)}">—</output>`}<small>${esc(row.unit)} · ${esc(METRICS[row.metric][0])}</small></label><label>${row.group === 'works' ? 'Оплата бригаде' : 'Цена за единицу'}, ₽<input data-row="${esc(row.id)}" data-key="price" inputmode="decimal" value="${esc(row.price)}" placeholder="Ваша расценка" aria-label="Цена ${esc(row.name)}"></label><label class="sum-label">Сумма<output data-amount="${esc(row.id)}">—</output></label></div><details class="row-more"><summary>Источник, способ расчёта${row.group === 'materials' ? ', запас и упаковка' : ''}</summary><div class="fields two"><label>Способ расчёта<select data-row="${esc(row.id)}" data-key="metric">${options(METRICS, row.metric)}</select></label><label>Единица измерения<input data-row="${esc(row.id)}" data-key="unit" value="${esc(row.unit)}" maxlength="30"${row.metric !== 'manual' ? ' readonly' : ''}></label>${row.group === 'materials' ? `<label>Запас, %<input data-row="${esc(row.id)}" data-key="reserve" value="${esc(row.reserve)}" inputmode="decimal" placeholder="0 — без запаса"></label><label>Количество в упаковке <small>пусто — упаковка не учитывается</small><input data-row="${esc(row.id)}" data-key="pack" value="${esc(row.pack)}" inputmode="decimal" placeholder="В единицах этой строки"></label>` : ''}<label>Источник цены / состав комплекта<input data-row="${esc(row.id)}" data-key="source" value="${esc(row.source)}" maxlength="2000" placeholder="Поставщик, КП, прайс или согласовано владельцем"></label><label>Дата цены<input data-row="${esc(row.id)}" data-key="date" type="date" value="${esc(row.date)}"></label>${!row.template ? `<label>Этап<select data-row="${esc(row.id)}" data-key="stage">${options(STAGES, row.stage)}</select></label><label>Группа затрат<select data-row="${esc(row.id)}" data-key="group">${options(GROUPS, row.group)}</select></label>` : ''}</div></details><p class="row-state" data-errors="${esc(row.id)}"></p></article>`;
     }).join('')}</details>`;
@@ -77,6 +79,18 @@ function renderVersions() {
 }
 function updateCalculation() {
   const c = calculate(project);
+  $('#demo-notice').hidden = !project.demonstration; $('#demo-notice').textContent = DEMO_NOTICE;
+  $('#overview-totals').innerHTML = [
+    [c.total === null ? 'Цена ещё не определена' : 'Цена включённого состава', money(c.total)],
+    ['Ваше вознаграждение', money(c.ownerPay)], ['Прибыль ООО', money(c.companyProfit)],
+    ['Заполнено позиций', `${c.rows.length - c.missing.length} / ${c.rows.length}`]
+  ].map(([label,value]) => `<div><span>${esc(label)}</span><strong>${esc(value)}</strong></div>`).join('');
+  $('#stage-overview').innerHTML = Object.entries(STAGES).map(([key,label]) => {
+    const rows = c.rows.filter(r => r.stage === key), missing = rows.filter(r => r.errors.length).length;
+    const sum = rows.reduce((v,r) => v + (r.amount ?? 0n), 0n), enabled = project.stages[key];
+    return `<a class="stage-summary${!enabled ? ' off' : missing || !rows.length ? ' pending' : ' complete'}" href="#stage-${key}" data-open-stage="${key}"><b>${esc(label)}</b><span>${!enabled ? 'Исключён' : !rows.length ? 'Нет позиций' : missing ? `Уточнить ${missing} из ${rows.length}` : `Заполнено: ${rows.length}`}</span><strong>${enabled ? esc(money(sum)) : '—'}</strong><small>${enabled && (missing || !rows.length) ? 'известная часть' : enabled ? 'затраты этапа' : 'в итог не входит'}</small></a>`;
+  }).join('');
+  $('#material-overview').innerHTML = c.rows.filter(r => r.group === 'materials').map(r => `<article><a href="#row-${esc(r.id)}" data-goto="${esc(r.id)}">${esc(r.name)}</a><div><span>Чистый объём: <b>${esc(format(r.netQuantity))} ${esc(r.unit)}</b></span><span>К закупке: <b>${esc(format(r.calculatedQuantity))} ${esc(r.unit)}</b></span><span>Запас: ${esc(r.reserve || 'не задан')}%</span><span>Сумма: <b>${esc(money(r.amount))}</b></span></div>${r.errors.length ? `<small>Уточнить: ${esc(r.errors.join('; '))}</small>` : ''}</article>`).join('') || '<p class="hint">Нет включённых материалов.</p>';
   const foundationMetrics = project.foundation.type === 'piles' ? [['pileCount', 'Сваи по проекту', 'шт.']] : [['foundationVolume', 'Бетон фундамента', 'м³'], ['foundationFormworkArea', 'Площадь контакта опалубки', 'м²']];
   const metrics = [['footprint', 'Наружный контур уровня', 'м²'], ['perimeter', 'Наружный периметр', 'м.п.'], ['wallArea', 'Наружные стены с фронтонами', 'м²'], ...project.technology === 'frame' ? [['frameLumber', 'Каркас по спецификации', 'м³'], ['insulationVolume', 'Утеплитель в ячейках', 'м³']] : [['wallVolume', 'Сплошные стены', 'м³']], ...project.technology === 'foam' ? [['blockCount', 'Пеноблок до запаса', 'шт.']] : [], ...foundationMetrics, ['floorArea', 'Перекрытия по проекту', 'м²'], ['roofArea', 'Кровля по скатам', 'м²']];
   $('#metrics').innerHTML = metrics.map(([key, label, unit]) => `<div><dt>${esc(label)}<small>${esc(unit)}</small></dt><dd>${esc(format(c.metrics[key]))}</dd></div>`).join('');
@@ -233,15 +247,22 @@ $('#resume-storage').addEventListener('click', () => {
     revision = latest.revision; paused = false; $('#storage-warning').hidden = true; $('#resume-storage').hidden = true; save(); renderVersions();
   } catch (error) { pause(error); }
 });
-$('#drawing-file').addEventListener('change', event => {
-  const file = event.target.files[0]; if (!file) return;
-  if (!['application/pdf', 'image/png', 'image/jpeg'].includes(file.type)) { message('Для просмотра выберите PDF, PNG или JPEG.'); return; }
-  if (drawingUrl) URL.revokeObjectURL(drawingUrl); drawingUrl = URL.createObjectURL(file);
-  $('#drawing-link').href = drawingUrl; $('#drawing-link').hidden = false;
-  message(`Чертёж «${file.name}» открыт локально. Размеры переносятся вручную; файл не входит в JSON.`);
+mountDrawing($('#drawing-tool'), next => replaceProject(next, 'Перед переносом проверенной схемы'));
+$('#load-demo').addEventListener('click', () => {
+  replaceProject(demonstrationProject($('#demo-technology').value, $('#demo-foundation').value), 'Перед учебным примером');
+  $('#overview').scrollIntoView({ behavior: 'smooth' });
 });
+function revealDrawing() { if (location.hash === '#drawing') $('#drawing').open = true; }
+window.addEventListener('hashchange', revealDrawing); revealDrawing();
 window.addEventListener('storage', event => { if (event.key === STORAGE_KEY) pause(Error('Сохранение изменено в другой вкладке.')); });
-window.addEventListener('beforeunload', () => { if (drawingUrl) URL.revokeObjectURL(drawingUrl); save(); });
+window.addEventListener('beforeunload', save);
 $('#project-catalog').innerHTML = PROJECTS.map(p => `<article class="reference-card"><h3>${esc(p.title)}</h3><p>${esc(p.publishedArea)}. ${esc(p.note)}</p><a href="${esc(p.url)}" target="_blank" rel="noopener noreferrer">Исходная карточка и планировка ↗</a><button class="secondary" data-reference="${p.id}">Загрузить габариты для проверки</button></article>`).join('');
 $('#price-sources').innerHTML = PRICE_SOURCES.map(p => `<article class="reference-card"><h3>${esc(p.title)} · ${esc(p.price)}</h3><p>${esc(p.company)} · проверено ${esc(p.checked)}. ${esc(p.note)}</p><a href="${esc(p.url)}" target="_blank" rel="noopener noreferrer">Проверить состав и цену у подрядчика ↗</a></article>`).join('');
 renderAll();
+
+// Explicit example links preserve the previous calculation as a version, then remove the one-shot flag.
+if (new URLSearchParams(location.search).get('example') === '8x14') {
+  replaceProject(demonstrationProject(), 'Перед учебным примером по ссылке');
+  const nextUrl = new URL(location.href); nextUrl.searchParams.delete('example'); history.replaceState(null, '', nextUrl);
+  $('#overview').scrollIntoView();
+}
