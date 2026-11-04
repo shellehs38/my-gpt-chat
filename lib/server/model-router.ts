@@ -9,7 +9,7 @@ import { isEstimateRequest, requiresFullEstimate } from "@/lib/server/chat";
  * request context; it does not claim cross-provider server-side memory.
  */
 export type ModelTier = "economy" | "quality" | "expert" | "legacy";
-export type ModelProvider = "openai" | "freellmapi";
+export type ModelProvider = "openai" | "freellmapi" | "omniroute";
 export type ModelAttempt = {
   provider: ModelProvider;
   model: string;
@@ -39,9 +39,8 @@ function usableModel(name: string | undefined): string | undefined {
   return name.trim();
 }
 
-/** Only a server-configured HTTPS gateway; never accept a base URL from the user request. */
-export function freeLlmEndpoint(env: Environment): string | undefined {
-  const raw = env.FREELLMAPI_BASE_URL;
+/** The provider URL is set only by server environment, never request JSON. */
+function gatewayEndpoint(raw: string | undefined): string | undefined {
   if (!raw) return undefined;
   try {
     const url = new URL(raw);
@@ -51,6 +50,14 @@ export function freeLlmEndpoint(env: Environment): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+export function freeLlmEndpoint(env: Environment): string | undefined {
+  return gatewayEndpoint(env.FREELLMAPI_BASE_URL);
+}
+
+export function omniRouteEndpoint(env: Environment): string | undefined {
+  return gatewayEndpoint(env.OMNIROUTE_BASE_URL);
 }
 
 export function modelAttemptsForRequest(request: ChatRequest, env: Environment = process.env): ModelAttempt[] {
@@ -69,20 +76,34 @@ export function modelAttemptsForRequest(request: ChatRequest, env: Environment =
   };
   const attempts: ModelAttempt[] = [];
 
-  // Strong opt-in. Even public project knowledge + a chat message may contain
-  // sensitive data. Enabling FreeLLMAPI requires explicit provider permission.
-  const externalEndpoint = freeLlmEndpoint(env);
-  const externalEnabled = env.FREELLMAPI_ENABLED === "on" &&
-    env.FREELLMAPI_EXTERNAL_DATA_APPROVED === "I_APPROVE_EXTERNAL_PROCESSING" &&
-    Boolean(externalEndpoint && env.FREELLMAPI_API_KEY?.trim());
-  if (tier === "economy" && externalEnabled) {
-    attempts.push({
+  // Third-party providers are opt-in independently. A mere URL or a request
+  // asking for a model must never authorize sending client and company data.
+  const externalAttempts: ModelAttempt[] = [];
+  const freeUrl = freeLlmEndpoint(env);
+  if (tier === "economy" && env.FREELLMAPI_ENABLED === "on" &&
+      env.FREELLMAPI_EXTERNAL_DATA_APPROVED === "I_APPROVE_EXTERNAL_PROCESSING" &&
+      freeUrl && env.FREELLMAPI_API_KEY?.trim()) {
+    externalAttempts.push({
       provider: "freellmapi", model: usableModel(env.FREELLMAPI_MODEL) ?? "auto",
-      tier, maxOutputTokens: 1600, endpoint: externalEndpoint!, apiKey: env.FREELLMAPI_API_KEY!.trim(),
+      tier, maxOutputTokens: 1600, endpoint: freeUrl, apiKey: env.FREELLMAPI_API_KEY.trim(),
     });
-    // Do not trigger paid API usage when a free route is exhausted unless
-    // the owner explicitly enables this paid fallback.
-    if (env.FREELLMAPI_PAID_FALLBACK !== "on") return attempts;
+  }
+  const omniUrl = omniRouteEndpoint(env);
+  if (tier === "economy" && env.OMNIROUTE_ENABLED === "on" &&
+      env.OMNIROUTE_EXTERNAL_DATA_APPROVED === "I_APPROVE_EXTERNAL_PROCESSING" &&
+      omniUrl && env.OMNIROUTE_API_KEY?.trim()) {
+    externalAttempts.push({
+      provider: "omniroute", model: usableModel(env.OMNIROUTE_MODEL) ?? "auto",
+      tier, maxOutputTokens: 1600, endpoint: omniUrl, apiKey: env.OMNIROUTE_API_KEY.trim(),
+    });
+  }
+  if (externalAttempts.length) {
+    if (env.ASSISTANT_GATEWAY_PRIORITY === "omniroute") externalAttempts.reverse();
+    attempts.push(...(env.ASSISTANT_GATEWAY_FAILOVER === "on" ? externalAttempts : externalAttempts.slice(0, 1)));
+    // Paid API fallback is disabled until explicitly authorized for external
+    // traffic. Default is external-only with bounded failover between gateways.
+    if (env.ASSISTANT_EXTERNAL_PAID_FALLBACK !== "on" &&
+        env.FREELLMAPI_PAID_FALLBACK !== "on" && env.OMNIROUTE_PAID_FALLBACK !== "on") return attempts;
   }
 
   if (key) attempts.push(selected);
