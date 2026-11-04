@@ -15,3 +15,7 @@
 ## Supabase и учёт
 
 При задачах о клиентах, объектах, расходах, сметах и переносе базы обязательно читай [docs/SUPABASE_BUSINESS_ASSISTANT.md](docs/SUPABASE_BUSINESS_ASSISTANT.md) и SQL-схему `supabase/migrations/20261019_initial_private_business_schema.sql`. Сохраняй текущий Google Sheets учёт, пока адаптер Supabase не проверен. Не утверждай, что сайт уже записывает в Supabase, до реального сквозного теста.
+
+## Экономия токенов, маршрутизация моделей и контекст
+
+Перед изменениями моделей, стоимости ИИ, памяти и переключения провайдеров читай [docs/MODEL_ROUTING_FREELLMAPI.md](docs/MODEL_ROUTING_FREELLMAPI.md). Без `ASSISTANT_MODEL_ROUTER=on` сохраняется исходный OpenAI-модуль. Не утверждай, что FreeLLMAPI запущен, что токены ChatGPT Plus обойдены, или что история ChatGPT перенесена в сайт. Файлы и ADR в GitHub — проектный контекст, а не личная память разговоров. Внешние провайдеры требуют отдельного HTTPS, ключа, разрешения обработки данных и проверки условий. Не активировать в Production без отдельного согласования.
