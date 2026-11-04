@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { chooseModelTier, executeModelRoute, extractFreeLlmOutput, freeLlmEndpoint, modelAttemptsForRequest } from "../lib/server/model-router";
+import { chooseModelTier, executeModelRoute, extractFreeLlmOutput, freeLlmEndpoint, omniRouteEndpoint, modelAttemptsForRequest } from "../lib/server/model-router";
 import type { ChatRequest } from "../lib/chat-contract";
 
 const general: ChatRequest = { mode: "general", message: "Привет" };
@@ -132,4 +132,62 @@ test("expert routing falls back to cheaper models and ultimately existing baseli
     assert.deepEqual(calls.map(c => c.model), ["gpt-6.1-sol", "gpt-6.1-terra"]);
     assert.ok(calls.every(c => c.instructions === "Правила СВОИ ЛЮДИ"));
   } finally { globalThis.fetch = fetch0; }
+});
+
+test("OmniRoute must never receive data without its own approval, key, and HTTPS endpoint", () => {
+  const base = {
+    ...configured,
+    OMNIROUTE_BASE_URL: "https://omni.example/v1",
+    OMNIROUTE_ENABLED: "on",
+    OMNIROUTE_API_KEY: "test-omniroute",
+  };
+  assert.equal(omniRouteEndpoint({ OMNIROUTE_BASE_URL: "https://omni.example/v1" }), "https://omni.example/v1/chat/completions");
+  assert.equal(omniRouteEndpoint({ OMNIROUTE_BASE_URL: "http://omni.example/v1" }), undefined);
+  assert.equal(omniRouteEndpoint({ OMNIROUTE_BASE_URL: "https://omni.example/admin" }), undefined);
+  assert.deepEqual(modelAttemptsForRequest(general, base).map(x => x.provider), ["openai"]);
+  assert.deepEqual(modelAttemptsForRequest(general, { ...base, OMNIROUTE_EXTERNAL_DATA_APPROVED: "I_APPROVE_EXTERNAL_PROCESSING" }).map(x => x.provider), ["omniroute"]);
+  assert.deepEqual(modelAttemptsForRequest(complex, { ...base, OMNIROUTE_EXTERNAL_DATA_APPROVED: "I_APPROVE_EXTERNAL_PROCESSING" }).map(x => x.provider), ["openai"]);
+  assert.deepEqual(modelAttemptsForRequest(general, { ...base, OMNIROUTE_API_KEY: "", OMNIROUTE_EXTERNAL_DATA_APPROVED: "I_APPROVE_EXTERNAL_PROCESSING" }).map(x => x.provider), ["openai"]);
+});
+
+test("FreeLLMAPI -> OmniRoute gateway failover preserves identical rules and conversation history, without paid API calls", async () => {
+  const env = {
+    ...configured,
+    FREELLMAPI_ENABLED: "on",
+    FREELLMAPI_EXTERNAL_DATA_APPROVED: "I_APPROVE_EXTERNAL_PROCESSING",
+    FREELLMAPI_BASE_URL: "https://free.example/v1",
+    FREELLMAPI_API_KEY: "test-free",
+    OMNIROUTE_ENABLED: "on",
+    OMNIROUTE_EXTERNAL_DATA_APPROVED: "I_APPROVE_EXTERNAL_PROCESSING",
+    OMNIROUTE_BASE_URL: "https://omni.example/v1",
+    OMNIROUTE_API_KEY: "test-omni",
+    ASSISTANT_GATEWAY_FAILOVER: "on",
+  };
+  assert.deepEqual(modelAttemptsForRequest(general, env).map(x => x.provider), ["freellmapi", "omniroute"]);
+  assert.deepEqual(modelAttemptsForRequest(general, { ...env, ASSISTANT_GATEWAY_PRIORITY: "omniroute" }).map(x => x.provider), ["omniroute", "freellmapi"]);
+  assert.deepEqual(modelAttemptsForRequest(general, { ...env, ASSISTANT_GATEWAY_FAILOVER: "off" }).map(x => x.provider), ["freellmapi"]);
+  const fetchOld = globalThis.fetch;
+  const captured: Array<{ url: string; authorization: string | null; body: Record<string, unknown> }> = [];
+  globalThis.fetch = async (url, options) => {
+    captured.push({ url: String(url), authorization: new Headers(options?.headers).get("Authorization"),
+      body: JSON.parse(String(options?.body)) });
+    return captured.length === 1 ? new Response("free quota exhausted", { status: 429 })
+      : new Response(JSON.stringify({ choices: [{ finish_reason: "stop", message: { role: "assistant", content: "Принято" } }] }), { status: 200 });
+  };
+  try {
+    const history = [{ role: "user" as const, content: "У нас 100 м² фасада" },
+      { role: "assistant" as const, content: "Какая облицовка?" },
+      { role: "user" as const, content: "Металлосайдинг" }];
+    const instructions = "ООО СВОИ ЛЮДИ. Не придумывать цены. Codebase Memory.";
+    const result = await executeModelRoute({ request: general, instructions, input: history, env,
+      signal: new AbortController().signal });
+    assert.equal(result?.route.provider, "omniroute");
+    assert.equal(result?.route.attempts, 2);
+    assert.equal(captured.length, 2);
+    assert.deepEqual(captured.map(x => x.url), ["https://free.example/v1/chat/completions", "https://omni.example/v1/chat/completions"]);
+    assert.deepEqual(captured.map(x => x.authorization), ["Bearer test-free", "Bearer test-omni"]);
+    assert.deepEqual(captured[0].body.messages, captured[1].body.messages);
+    assert.deepEqual(captured[1].body.messages, [{ role: "system", content: instructions }, ...history]);
+    assert.equal(captured.every(x => x.body.model === "auto"), true);
+  } finally { globalThis.fetch = fetchOld; }
 });
