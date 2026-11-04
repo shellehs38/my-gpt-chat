@@ -8,7 +8,7 @@ import { isEstimateRequest, requiresFullEstimate } from "@/lib/server/chat";
  * Provider failover is limited to transient errors and uses the *same* full
  * request context; it does not claim cross-provider server-side memory.
  */
-export type ModelTier = "economy" | "quality" | "legacy";
+export type ModelTier = "economy" | "quality" | "expert" | "legacy";
 export type ModelProvider = "openai" | "freellmapi";
 export type ModelAttempt = {
   provider: ModelProvider;
@@ -22,9 +22,11 @@ export type ModelAttempt = {
 export type ModelRoute = { provider: ModelProvider; model: string; tier: ModelTier; attempts: number };
 type Environment = Readonly<Record<string, string | undefined>>;
 
-const COMPLEX_SUBJECT = /(?:состав|подготов|разработ|проверь|проверить|проанализир|рассчита|пересчита).{0,55}(?:полн.{0,20}смет|договор|техническ|проект|расч[её]т|финанс|архитектур)|(?:несущ|нагрузк|пожар|безопасн|схем[ау]|конструктив|норматив|законодательств|гост|снип|техкарт|материал.{0,15}спецификац)/iu;
+const COMPLEX_SUBJECT = /(?:состав|подготов|разработ|проверь|проверить|проанализир|рассчита|пересчита).{0,55}(?:полн.{0,20}смет|договор|техническ|проект|расч[её]т|финанс|архитектур)|(?:норматив|законодательств|гост|снип|техкарт|материал.{0,15}спецификац)/iu;
+const EXPERT_SUBJECT = /(?:несущ|нагрузк|фундамент.{0,20}расч[её]т|экспертн.{0,20}заключен|пожарн.{0,20}безопасн|прочност|конструктивн.{0,20}расч[её]т|технико.экономическ|правов.{0,25}экспертиз|сравн.{0,45}(?:сложн|смет|проект)|проверь.{0,40}(?:безопасност|архитектур))/iu;
 
 export function chooseModelTier(request: ChatRequest): Exclude<ModelTier, "legacy"> {
+  if (EXPERT_SUBJECT.test(request.message)) return "expert";
   if (["estimate", "engineering", "facade", "documents"].includes(request.mode)) return "quality";
   if (requiresFullEstimate(request) || isEstimateRequest(request) || COMPLEX_SUBJECT.test(request.message)) return "quality";
   if (request.message.length > 1500) return "quality";
@@ -57,10 +59,13 @@ export function modelAttemptsForRequest(request: ChatRequest, env: Environment =
   const legacy: ModelAttempt = { provider: "openai", model: baseline, tier: "legacy", maxOutputTokens: 8000, endpoint: "https://api.openai.com/v1/responses", apiKey: key };
   if (env.ASSISTANT_MODEL_ROUTER !== "on") return [legacy];
   const tier = chooseModelTier(request);
-  const primary = usableModel(tier === "economy" ? env.ASSISTANT_ECONOMY_MODEL : env.ASSISTANT_QUALITY_MODEL) ?? baseline;
+  const preferred = tier === "economy" ? env.ASSISTANT_ECONOMY_MODEL
+    : tier === "expert" ? (env.ASSISTANT_EXPERT_MODEL ?? env.ASSISTANT_QUALITY_MODEL)
+    : env.ASSISTANT_QUALITY_MODEL;
+  const primary = usableModel(preferred) ?? baseline;
   const selected: ModelAttempt = {
     ...legacy, model: primary, tier,
-    maxOutputTokens: tier === "economy" ? 1600 : 8000,
+    maxOutputTokens: tier === "economy" ? 1800 : 8000,
   };
   const attempts: ModelAttempt[] = [];
 
@@ -81,16 +86,22 @@ export function modelAttemptsForRequest(request: ChatRequest, env: Environment =
   }
 
   if (key) attempts.push(selected);
-  if (tier === "economy" && key && env.ASSISTANT_MODEL_FALLBACK === "on") {
+  if (key && env.ASSISTANT_MODEL_FALLBACK === "on") {
+    // A bounded, progressively cheaper fallback. Never escalate a failed cheap
+    // request to an expensive model just because a free quota was reached.
     const quality = usableModel(env.ASSISTANT_QUALITY_MODEL);
-    if (quality && quality !== selected.model) attempts.push({ ...selected, model: quality, tier: "quality", maxOutputTokens: 8000 });
+    if (tier === "expert" && quality && quality !== selected.model)
+      attempts.push({ ...selected, model: quality, tier: "quality" });
+    if (!attempts.some((attempt) => attempt.provider === "openai" && attempt.model === baseline))
+      attempts.push({ ...legacy, tier, maxOutputTokens: selected.maxOutputTokens });
   }
+
   // Fail closed if no provider is configured; the API returns a visible 503.
   return attempts;
 }
 
 export function isRetryableUpstreamStatus(status: number): boolean {
-  return status === 408 || status === 429 || status === 500 || status === 502 || status === 503 || status === 504;
+  return status === 404 || status === 408 || status === 429 || status === 500 || status === 502 || status === 503 || status === 504;
 }
 
 export function extractFreeLlmOutput(raw: unknown): string | null {
