@@ -51,3 +51,7 @@ system-catalog.mjs и lib/server/facade-catalog.ts: системы/матери�
 ## NATIVE APPLICATION PREVIEW
 
 native/: Flutter iOS+Win. Native bearer/chat, local history. Sync pending.
+
+## MODEL ROUTING AND CONTEXT HANDOFF
+
+lib/server/model-router.ts: при ASSISTANT_MODEL_ROUTER=on простые запросы — экономичная OpenAI-модель, инженерия/фасады/сметы/документы — качественная. При выключенном флаге поведение прежнее. На каждом переключении передавать одинаковые утверждённые правила, выбранный режим, buildInstructions, projectMemoryContext и ограниченную историю/контекст объекта. Это не архив личной памяти ChatGPT. Не выдавать внешнюю отправку FreeLLMAPI за автоматическое подключение ChatGPT: только отдельный HTTPS-шлюз, отдельный секрет и явное подтверждение внешней передачи. Нет гарантии экономии, бесплатности и Astra-качества. Подробности: docs/MODEL_ROUTING_FREELLMAPI.md. Production/ключи без разрешения не менять.
