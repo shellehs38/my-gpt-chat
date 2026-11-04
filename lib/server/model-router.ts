@@ -20,7 +20,7 @@ export type ModelAttempt = {
 };
 
 export type ModelRoute = { provider: ModelProvider; model: string; tier: ModelTier; attempts: number };
-type Environment = NodeJS.ProcessEnv;
+type Environment = Readonly<Record<string, string | undefined>>;
 
 const COMPLEX_SUBJECT = /(?:состав|подготов|разработ|проверь|проверить|проанализир|рассчита|пересчита).{0,55}(?:полн.{0,20}смет|договор|техническ|проект|расч[её]т|финанс|архитектур)|(?:несущ|нагрузк|пожар|безопасн|схем[ау]|конструктив|норматив|законодательств|гост|снип|техкарт|материал.{0,15}спецификац)/iu;
 
