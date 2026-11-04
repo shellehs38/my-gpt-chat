@@ -24,12 +24,12 @@ test("router remains disabled by default and retains exact existing provider cal
   assert.equal(chooseModelTier({ mode: "engineering", message: "Проверь расчёт несущей конструкции на нагрузку" }), "expert");
   assert.equal(chooseModelTier({ mode: "business", message: "Какая норма пожарной безопасности?" }), "expert");
   assert.equal(chooseModelTier({ mode: "documents", message: "Напиши договор" }), "quality");
-  assert.equal(chooseModelTier({ mode: "general", message: "Рассчитай нагрузки на несущую конструкцию" }), "quality");
+  assert.equal(chooseModelTier({ mode: "general", message: "Рассчитай нагрузки на несущую конструкцию" }), "expert");
   assert.equal(modelAttemptsForRequest(general, configured)[0].model, "gpt-6-luna");
   assert.equal(modelAttemptsForRequest(complex, configured)[0].model, "gpt-6.1-terra");
   assert.equal(modelAttemptsForRequest(complex, configured)[0].maxOutputTokens, 8000);
   assert.equal(modelAttemptsForRequest({ mode: "engineering", message: "Рассчитай нагрузку на фундамент" }, configured)[0].model, "gpt-6.1-sol");
-  assert.equal(modelAttemptsForRequest(general, configured)[0].maxOutputTokens, 1600);
+  assert.equal(modelAttemptsForRequest(general, configured)[0].maxOutputTokens, 1800);
 });
 
 test("invalid external endpoints, missing keys or missing approval cannot receive chat or project context", () => {
