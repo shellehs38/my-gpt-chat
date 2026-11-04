@@ -68,7 +68,7 @@ export async function handleAuthenticatedChat(request: Request, session: Assista
     let data: unknown;
     try { data = await response.json(); }
     catch { return errorResponse("Сервис ИИ вернул некорректный ответ.", 502); }
-    const raw = route.provider === "freellmapi" ? extractFreeLlmOutput(data) : extractCompletedOutput(data);
+    const raw = route.provider !== "openai" ? extractFreeLlmOutput(data) : extractCompletedOutput(data);
     if (!raw || raw.length > MAX_REPLY_LENGTH || hasBrokenEstimateMarkdown(raw) ||
         (requiresFullEstimate(body) && !hasRequiredEstimateSections(raw, requestedFacadeOptions(body)))) {
       return errorResponse("ИИ вернул неполный или повреждённый ответ. Смета не заменена. Повторите запрос или разделите его на меньшие части.", 502);
