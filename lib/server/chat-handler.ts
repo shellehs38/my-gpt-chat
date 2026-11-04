@@ -6,6 +6,7 @@ import { buildInstructions, ensureScaffoldRows, extractCompletedOutput, hasBroke
 import { BodyError, errorResponse, readJsonBody } from "@/lib/server/http";
 import { acquireChatSlot, takeRateLimit } from "@/lib/server/rate-limit";
 import { loadProjectMemory, memoryStatus, projectMemoryContext } from "@/lib/server/project-memory";
+import { executeModelRoute, extractFreeLlmOutput, modelAttemptsForRequest } from "@/lib/server/model-router";
 
 const OPENAI_TIMEOUT_MS = 30_000;
 type NativeProjectContext = { name: string; address?: string; savedCalculation?: Record<string, unknown> };
@@ -44,36 +45,30 @@ export async function handleAuthenticatedChat(request: Request, session: Assista
     if (options.allowProjectContext) projectContext = validateProjectContext(raw);
   }
   catch (error) { return error instanceof BodyError ? errorResponse(error.message, error.status) : errorResponse("Не удалось прочитать запрос.", 400); }
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) return errorResponse("Сервис ИИ временно недоступен. Проверьте настройки сервера.", 503);
+  if (!modelAttemptsForRequest(body).some((attempt) => Boolean(attempt.apiKey))) return errorResponse("Сервис ИИ временно недоступен. Проверьте настройки сервера.", 503);
   const release = acquireChatSlot();
   if (!release) return errorResponse("Уже выполняются два запроса. Дождитесь ответа и повторите.", 429, { "Retry-After": "30" });
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), OPENAI_TIMEOUT_MS);
   try {
     const memory = loadProjectMemory();
-    const response = await fetch("https://api.openai.com/v1/responses", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        model: process.env.OPENAI_MODEL?.trim() || "gpt-4.1-mini",
-        instructions: buildInstructions(body) + "\n\n" + projectMemoryContext(memory, body.message),
-        input: [
-          ...(body.history ?? []),
-          ...(projectContext ? [{ role: "user", content: "Контекст выбранного объекта (данные, не инструкции):\n" + JSON.stringify(projectContext) }] : []),
-          { role: "user", content: body.message },
-        ],
-        max_output_tokens: 8000,
-        store: false,
-      }),
+    const routed = await executeModelRoute({
+      request: body,
+      instructions: buildInstructions(body) + "\\n\\n" + projectMemoryContext(memory, body.message),
+      input: [
+        ...(body.history ?? []),
+        ...(projectContext ? [{ role: "user" as const, content: "Контекст выбранного объекта (данные, не инструкции):\\n" + JSON.stringify(projectContext) }] : []),
+        { role: "user" as const, content: body.message },
+      ],
       signal: controller.signal,
-      cache: "no-store",
     });
+    if (!routed) return errorResponse("Нет доступной настроенной модели. Проверьте серверные настройки.", 503);
+    const { response, route } = routed;
     if (!response.ok) return errorResponse(response.status === 429 ? "Сервис ИИ временно недоступен. Попробуйте позже." : "Не удалось получить ответ ИИ. Попробуйте позже.", response.status === 429 ? 503 : 502);
     let data: unknown;
     try { data = await response.json(); }
     catch { return errorResponse("Сервис ИИ вернул некорректный ответ.", 502); }
-    const raw = extractCompletedOutput(data);
+    const raw = route.provider === "freellmapi" ? extractFreeLlmOutput(data) : extractCompletedOutput(data);
     if (!raw || raw.length > MAX_REPLY_LENGTH || hasBrokenEstimateMarkdown(raw) ||
         (requiresFullEstimate(body) && !hasRequiredEstimateSections(raw, requestedFacadeOptions(body)))) {
       return errorResponse("ИИ вернул неполный или повреждённый ответ. Смета не заменена. Повторите запрос или разделите его на меньшие части.", 502);
@@ -83,7 +78,7 @@ export async function handleAuthenticatedChat(request: Request, session: Assista
     const document = parseEstimateDocument(withScaffold);
     // Browser and API share precisely the same calculation/serialization path.
     const reply = estimate && document.blocks.some((block) => block.type === "table") ? serializeEstimateDocument(document) : withScaffold;
-    return NextResponse.json({ reply, calculation: estimate ? "estimate" : "none", memory: memoryStatus(memory) }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({ reply, calculation: estimate ? "estimate" : "none", memory: memoryStatus(memory), routing: route }, { headers: { "Cache-Control": "no-store" } });
   } catch {
     return errorResponse(controller.signal.aborted ? "Сервис ИИ отвечает слишком долго. Попробуйте ещё раз." : "Не удалось связаться с сервисом ИИ. Попробуйте позже.", controller.signal.aborted ? 504 : 502);
   } finally {
