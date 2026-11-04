@@ -5,7 +5,7 @@ import type { ChatRequest } from "../lib/chat-contract";
 
 const general: ChatRequest = { mode: "general", message: "Привет" };
 const complex: ChatRequest = { mode: "estimate", message: "Составь полную смету фасада" };
-const configured: NodeJS.ProcessEnv = {
+const configured: Record<string, string | undefined> = {
   OPENAI_API_KEY: "test-openai-only",
   OPENAI_MODEL: "gpt-4.1-mini",
   ASSISTANT_MODEL_ROUTER: "on",
