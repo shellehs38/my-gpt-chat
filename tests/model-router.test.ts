@@ -1,0 +1,107 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { chooseModelTier, executeModelRoute, extractFreeLlmOutput, freeLlmEndpoint, modelAttemptsForRequest } from "../lib/server/model-router";
+import type { ChatRequest } from "../lib/chat-contract";
+
+const general: ChatRequest = { mode: "general", message: "Привет" };
+const complex: ChatRequest = { mode: "estimate", message: "Составь полную смету фасада" };
+const configured: NodeJS.ProcessEnv = {
+  OPENAI_API_KEY: "test-openai-only",
+  OPENAI_MODEL: "gpt-4.1-mini",
+  ASSISTANT_MODEL_ROUTER: "on",
+  ASSISTANT_ECONOMY_MODEL: "gpt-6-luna",
+  ASSISTANT_QUALITY_MODEL: "gpt-6.1-terra",
+};
+
+test("router remains disabled by default and retains exact existing provider call", () => {
+  assert.deepEqual(modelAttemptsForRequest(general, { OPENAI_API_KEY: "test", OPENAI_MODEL: "gpt-4.1-mini" }), [{
+    provider: "openai", model: "gpt-4.1-mini", tier: "legacy",
+    maxOutputTokens: 8000, endpoint: "https://api.openai.com/v1/responses", apiKey: "test",
+  }]);
+  assert.equal(chooseModelTier(general), "economy");
+  assert.equal(chooseModelTier(complex), "quality");
+  assert.equal(chooseModelTier({ mode: "documents", message: "Напиши договор" }), "quality");
+  assert.equal(chooseModelTier({ mode: "general", message: "Рассчитай нагрузки на несущую конструкцию" }), "quality");
+  assert.equal(modelAttemptsForRequest(general, configured)[0].model, "gpt-6-luna");
+  assert.equal(modelAttemptsForRequest(complex, configured)[0].model, "gpt-6.1-terra");
+  assert.equal(modelAttemptsForRequest(complex, configured)[0].maxOutputTokens, 8000);
+  assert.equal(modelAttemptsForRequest(general, configured)[0].maxOutputTokens, 1600);
+});
+
+test("invalid external endpoints, missing keys or missing approval cannot receive chat or project context", () => {
+  for (const value of ["http://router.example/v1", "https://user:pass@router.example/v1", "https://router.example/v1?key=x",
+    "https://router.example/admin", "https://router.example/#fragment", "not-a-url"]) {
+    assert.equal(freeLlmEndpoint({ FREELLMAPI_BASE_URL: value }), undefined, value);
+  }
+  assert.equal(freeLlmEndpoint({ FREELLMAPI_BASE_URL: "https://router.example/v1" }), "https://router.example/v1/chat/completions");
+  const base = { ...configured, FREELLMAPI_ENABLED: "on", FREELLMAPI_BASE_URL: "https://router.example/v1", FREELLMAPI_API_KEY: "test-gateway-key" };
+  assert.deepEqual(modelAttemptsForRequest(general, base).map(a => a.provider), ["openai"]);
+  assert.deepEqual(modelAttemptsForRequest(general, { ...base, FREELLMAPI_EXTERNAL_DATA_APPROVED: "yes" }).map(a => a.provider), ["openai"]);
+  assert.deepEqual(modelAttemptsForRequest(general, { ...base, FREELLMAPI_EXTERNAL_DATA_APPROVED: "I_APPROVE_EXTERNAL_PROCESSING" }).map(a => a.provider), ["freellmapi"]);
+  assert.deepEqual(modelAttemptsForRequest(complex, { ...base, FREELLMAPI_EXTERNAL_DATA_APPROVED: "I_APPROVE_EXTERNAL_PROCESSING" }).map(a => a.provider), ["openai"]);
+});
+
+test("routing to another provider receives the exact same user history and full project instructions", async () => {
+  const env = { ...configured, FREELLMAPI_ENABLED: "on", FREELLMAPI_BASE_URL: "https://router.example/v1",
+    FREELLMAPI_API_KEY: "test-gateway-key", FREELLMAPI_EXTERNAL_DATA_APPROVED: "I_APPROVE_EXTERNAL_PROCESSING",
+    FREELLMAPI_PAID_FALLBACK: "on" };
+  const history = [{ role: "user" as const, content: "Фасад 100 м²" }, { role: "assistant" as const, content: "Какая облицовка?" },
+    { role: "user" as const, content: "Металлосайдинг" }];
+  const input = [...history, { role: "user" as const, content: "Продолжим" }];
+  const instructions = "Фирменный логотип ООО СВОИ ЛЮДИ. Память Codebase Memory. Не выдумывай цены.";
+  const actual: Array<{ url: string; headers: Headers; body: Record<string, unknown> }> = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url, options) => {
+    actual.push({ url: String(url), headers: new Headers(options?.headers), body: JSON.parse(String(options?.body)) });
+    if (actual.length === 1) return new Response("rate limited", { status: 429 });
+    return new Response(JSON.stringify({ status: "completed", output: [{ content: [{ type: "output_text", text: "Ответ" }] }] }), { status: 200 });
+  };
+  try {
+    const result = await executeModelRoute({ request: general, instructions, input, signal: new AbortController().signal, env });
+    assert.equal(result?.route.model, "gpt-6-luna");
+    assert.equal(result?.route.provider, "openai");
+    assert.equal(result?.route.attempts, 2);
+    assert.equal(actual.length, 2);
+    assert.equal(actual[0].url, "https://router.example/v1/chat/completions");
+    assert.equal(actual[1].url, "https://api.openai.com/v1/responses");
+    assert.equal(actual[0].headers.get("authorization"), "Bearer test-gateway-key");
+    assert.equal(actual[1].headers.get("authorization"), "Bearer test-openai-only");
+    assert.deepEqual(actual[0].body.messages, [{ role: "system", content: instructions }, ...input]);
+    assert.equal(actual[1].body.instructions, instructions);
+    assert.deepEqual(actual[1].body.input, input);
+    assert.equal(actual[1].body.store, false);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("no unexpected paid fallback after FreeLLMAPI quota failure", async () => {
+  const env = { ...configured, FREELLMAPI_ENABLED: "on", FREELLMAPI_BASE_URL: "https://router.example/v1",
+    FREELLMAPI_API_KEY: "test-gateway-key", FREELLMAPI_EXTERNAL_DATA_APPROVED: "I_APPROVE_EXTERNAL_PROCESSING" };
+  const old = globalThis.fetch; let calls = 0;
+  globalThis.fetch = async () => { calls++; return new Response("quota reached", { status: 429 }); };
+  try {
+    const result = await executeModelRoute({ request: general, instructions: "Rules", input: [{ role: "user", content: "Message" }],
+      signal: new AbortController().signal, env });
+    assert.equal(result?.response.status, 429);
+    assert.equal(calls, 1);
+  } finally { globalThis.fetch = old; }
+});
+
+test("non-retryable provider responses are not silently forwarded or retried", async () => {
+  const env = { ...configured, ASSISTANT_MODEL_FALLBACK: "on" };
+  const old = globalThis.fetch; let calls = 0;
+  globalThis.fetch = async () => { calls++; return new Response("bad credentials", { status: 401 }); };
+  try {
+    const result = await executeModelRoute({ request: general, instructions: "Rules", input: [{ role: "user", content: "Message" }],
+      signal: new AbortController().signal, env });
+    assert.equal(result?.response.status, 401);
+    assert.equal(calls, 1);
+  } finally { globalThis.fetch = old; }
+});
+
+test("FreeLLM completion results must be complete and non-refusal", () => {
+  const valid = { choices: [{ finish_reason: "stop", message: { role: "assistant", content: "Готово" } }] };
+  assert.equal(extractFreeLlmOutput(valid), "Готово");
+  assert.equal(extractFreeLlmOutput({ ...valid, choices: [{ ...valid.choices[0], finish_reason: "length" }] }), null);
+  assert.equal(extractFreeLlmOutput({ ...valid, choices: [{ finish_reason: "stop", message: { role: "assistant", content: "Готово", tool_calls: [1] } }] }), null);
+  assert.equal(extractFreeLlmOutput({ error: "failed", ...valid }), null);
+});
