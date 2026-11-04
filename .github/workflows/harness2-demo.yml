@@ -1,0 +1,34 @@
+name: Harness2 Isolated Demo (Manual)
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  demo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Set up Python 3.12
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - name: Fetch pinned Harness2 source (no credentials)
+        run: |
+          git clone --no-checkout https://github.com/google-research/harness2.git /tmp/harness2
+          cd /tmp/harness2
+          git checkout 6868817518876de8fd170c6a8354daca273b6191
+      - name: Install and run deterministic local demo
+        run: |
+          cd /tmp/harness2
+          python -m pip install -e '.[render]'
+          harness2-demo --output "$RUNNER_TEMP/harness2-demo" --k 2
+      - name: Upload demo results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: harness2-isolated-demo
+          path: ${{ runner.temp }}/harness2-demo
+          if-no-files-found: warn
+          retention-days: 7
