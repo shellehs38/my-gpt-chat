@@ -51,3 +51,11 @@ system-catalog.mjs и lib/server/facade-catalog.ts: системы/матери�
 ## NATIVE APPLICATION PREVIEW
 
 native/: Flutter iOS+Win. Native bearer/chat, local history. Sync pending.
+
+## MODEL ROUTER
+
+lib/server/model-router.ts: по умолчанию отключён. Переключение сохраняет Codebase Memory, инструкции, 16 сообщений и объект. FreeLLMAPI требует HTTPS, ключ, согласие. ChatGPT-лимиты не меняются. См. docs/MODEL_ROUTING_FREELLMAPI.md.
+
+## OWNER CONTEXT
+
+ООО «СВОИ ЛЮДИ», Иркутск: приоритет фасады, также отмостки, ливнёвка, бетон, заборы. Цели: заказы, прибыль, сметы, контроль, делегирование, автоматизация. Русский; факты, работы/материалы, прямые ссылки. Не архив чатов.
