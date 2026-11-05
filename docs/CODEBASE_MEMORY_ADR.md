@@ -20,7 +20,7 @@ API: вход владельца, HttpOnly-сессия, проверка origin
 
 ## COMPANY DOCUMENT BRANDING
 
-Все оформленные файлы/сайты/экспорт: подлинный PNG public/brand/logo-sl-approved-light.png либо другой из трёх утверждённых вариантов. Не перерисовывать. DOCUMENT_BRANDING.md, BRAND_LOGO_RULES.md. HTML встраивает байты; знак сохраняется при печати. Схему Sheets ради оформления не сдвигать.
+Любая смета, договор и любой новый/редактируемый документ — с подлинным PNG public/brand/logo-sl-approved-light.png, без перерисовки. DOCUMENT_BRANDING.md, BRAND_LOGO_RULES.md. Кнопки PDF/Word/Excel: /api/documents/export, lib/server/document-export.ts; HTML: lib/document-branding.ts. Встраивать PNG, при ошибке не выдавать файл без знака. Текст/Markdown — только данные со ссылкой, не оформленный файл. Проверять каждый формат; схема Sheets сохраняется.
 
 ## GOOGLE DRIVE CONNECTION STAGE
 
