@@ -22,6 +22,8 @@ API: вход владельца, HttpOnly-сессия, проверка origin
 
 Любая смета, договор и любой новый/редактируемый документ — с подлинным PNG public/brand/logo-sl-approved-light.png, без перерисовки. DOCUMENT_BRANDING.md, BRAND_LOGO_RULES.md. Кнопки PDF/Word/Excel: /api/documents/export, lib/server/document-export.ts; HTML: lib/document-branding.ts. Встраивать PNG, при ошибке не выдавать файл без знака. Текст/Markdown — только данные со ссылкой, не оформленный файл. Проверять каждый формат; схема Sheets сохраняется.
 
+Клиентские документы в ChatGPT и помощнике: крупный полупрозрачный водяной знак «СВОИ ЛЮДИ» на каждой странице, плюс PNG в шапке. Проверять файл/печать и читаемость; генераторы проверять отдельно.
+
 ## GOOGLE DRIVE CONNECTION STAGE
 
 OAuth openid+drive.file, стабильный owner. DriveAutosave: неизменяемые JSON, outbox/ID; saved после проверки папки/размера/SHA-256/чтения. Ветки до выбора; local clear — пауза, не удаление облака. Фото схем обрабатываются отдельно по кнопке, без облачного сохранения; калькуляторы отдельно от Drive.
