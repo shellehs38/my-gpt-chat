@@ -12,30 +12,23 @@ lib/estimate.ts: точные деньги, неизвестное не ноль
 
 ## ASSISTANT MODES
 
-Режимы general/estimate/engineering/facade/business/documents независимы (assistant-modes.ts, server/chat.ts). modeState разделяет диалоги/черновики/ответы/повторы; поздний ответ — в исходную вкладку. Новый предмет важнее прошлой темы. calculation=none не пересчитывает документы; старые версии совместимы. Decode не переписывает старые снимки ради Drive SHA-256.
-
+Режимы general/estimate/engineering/facade/business/documents раздельны; modeState изолирует вкладки, черновики и поздние ответы. Новый запрос выше старой темы. calculation=none не пересчитывает; старые снимки Drive SHA-256 не переписывать.
 ## ACCESS AND STORAGE
 
-Вход владельца, HttpOnly, origin; секреты только серверу. Проект/копии доступны после входа. Выход/истечение сохраняют черновик; таймер и возврат перепроверяют сессию, 401 закрывает интерфейс. Очистка удаляет локальный проект, команду учёта и очереди Drive, сохраняет облако. Перенос JSON. Sheets — отдельный сервисный аккаунт; Drive ChatGPT не авторизует сайт. Лимиты процесса локальны.
-
+Вход владельца: HttpOnly/origin; секреты серверные. Сессия/401/возврат сохраняют черновик. Очистка удаляет локальный проект/очереди учёта и Drive, не облако; перенос JSON. Sheets — свой service account; ChatGPT Drive не авторизует сайт.
 ## COMPANY DOCUMENT BRANDING
 
-Любая смета, договор и любой новый/редактируемый документ — с подлинным PNG public/brand/logo-sl-approved-light.png, без перерисовки. DOCUMENT_BRANDING.md, BRAND_LOGO_RULES.md. Кнопки PDF/Word/Excel: /api/documents/export, lib/server/document-export.ts; HTML: lib/document-branding.ts. Встраивать PNG, при ошибке не выдавать файл без знака. Текст/Markdown — только данные со ссылкой, не оформленный файл. Проверять каждый формат; схема Sheets сохраняется.
-
-Клиентские документы в ChatGPT и помощнике: крупный полупрозрачный водяной знак «СВОИ ЛЮДИ» на каждой странице, плюс PNG в шапке. Проверять файл/печать и читаемость; генераторы проверять отдельно.
-
+Каждый клиентский документ: оригинальный утверждённый PNG в шапке + крупный полупрозрачный знак «СВОИ ЛЮДИ» на каждой странице; без PNG файл не выдавать. Проверять PDF/DOCX/XLSX/HTML и печать. /api/documents/export, lib/server/document-export.ts, lib/document-branding.ts. Полные правила: DOCUMENT_BRANDING.md, BRAND_LOGO_RULES.md.
 ## GOOGLE DRIVE CONNECTION STAGE
 
-OAuth openid+drive.file, стабильный owner. DriveAutosave: неизменяемые JSON, outbox/ID; saved после проверки папки/размера/SHA-256/чтения. Ветки до выбора; local clear удаляет outbox и ставит синхронизацию на паузу во всех вкладках, не удаляя облако. Фото схем обрабатываются отдельно по кнопке, без облачного сохранения; калькуляторы отдельно от Drive.
-
+OAuth openid+drive.file, стабильный owner. DriveAutosave: неизменяемый JSON/outbox/ID; saved только после проверки папки/размера/SHA-256/чтения. Очистка удаляет локальную очередь и паузит синхронизацию, не облако. Фото /api/drawing отдельно, калькуляторы отдельно от Drive.
 ## DEVELOPMENT MEMORY
 
 Codebase Memory 0.12.1: AGENTS.md, код и тесты приоритетнее графа. Проверять свежесть/охват, после правок memory:index и memory:check. Клиентов/секреты/переписку не индексировать. docs/CODEBASE_MEMORY.md.
 
 ## SHARED CHAT MEMORY
 
-Сборка: data/codebase-memory.json для чата. MCP /api/mcp: get_project_memory/get_memory_status/search_codebase/get_file_outline; GET /api/project-memory: status/sections. Только публичные правила/символы; без клиентов/env/переписки/удалённой записи. revision/fingerprint — версия. Изменения ADR публикуются сборкой.
-
+Сборочный data/codebase-memory.json: /api/mcp (get_project_memory/get_memory_status/search_codebase/get_file_outline), /api/project-memory (status/sections). Публичные правила/символы + revision/fingerprint, без клиентов, секретов, диалогов и внешней записи.
 ## CONSTRUCTION KNOWLEDGE
 
 База: plugin-source/svoi-lyudi-builder/skills/construction-assistant/references. Действующие требования, проект и техкарта точного продукта обязательны; конфликт — проектировщику. Не переносить нормы/крепёж между изделиями; фото/оценка не проект/приёмка. Допущения отмечать. С 26.10.2026 надбавка к труду отменена; цену утверждает владелец.
@@ -46,8 +39,7 @@ system-catalog.mjs и lib/server/facade-catalog.ts: системы/матери�
 
 ## HOUSE CONSTRUCTION CALCULATOR
 
-/calculators/ — дом/фасад. public/house-calculator/: брус/каркас/пенобетон, 15 этапов. Неизвестные цены/объёмы пустые; запас только материалов. Затраты, налоги, вознаграждение и прибыль раздельно, без автоналога/надбавки. Углы и обсадка один раз; каркас по спецификации. JSON/localStorage отдельно от Drive/Sheets. Фото /api/drawing: сессия/origin/лимиты, числа проверяются до нового проекта, изображение не сохраняется. Учебный пример 8×14 и прайсы — справка, не КП. Чат движок не вызывает. Фундамент: бетон м³, контакт опалубки м²; установка/разборка отдельно. Щиты по оборачиваемости, аренда/насос по КП. Сложные пересечения по ведомости. Старые v1 без доплат до обновления; смена типа сбрасывает размеры/ставки. Подробности: docs/HOUSE_CALCULATOR.md.
-
+/calculators, public/house-calculator: брус/каркас/пенобетон, 15 этапов; неизвестное пустое, запас лишь материалов. Затраты/налоги/вознаграждение/прибыль раздельно, без автодоплат; углы/обсадка один раз, каркас по спецификации. JSON/localStorage отдельно от облака. /api/drawing: сессия/origin/лимиты, проверка цифр, без сохранения изображения. 8×14 и прайсы — учебные, не КП. Фундамент: бетон м³, опалубка м², монтаж/демонтаж, аренда отдельно. Старые v1 без доплат, смена типа сбрасывает ставки/размеры. docs/HOUSE_CALCULATOR.md.
 ## NATIVE APPLICATION PREVIEW
 
 native/: Flutter iOS+Win. Native bearer/chat, local history. Sync pending.
@@ -59,3 +51,7 @@ lib/server/model-router.ts: по умолчанию отключён. Перек
 ## OWNER CONTEXT
 
 ООО «СВОИ ЛЮДИ», Иркутск: приоритет фасады, также отмостки, ливнёвка, бетон, заборы. Цели: заказы, прибыль, сметы, контроль, делегирование, автоматизация. Русский; факты, работы/материалы, прямые ссылки. Не архив чатов.
+
+## CODEX / WORK И ПРОВАЙДЕРЫ (2026-11-05)
+
+Для Codex/Work: docs/CODEX_WORK_SHARED_CONTEXT.md и docs/AI_INTEGRATION_STATUS_20261105.md. Веса качества по выбору владельца: интеллект 58%, надёжность 32%, скорость 10% (подтвердить сохранение). FreeLLMAPI/OmniRoute не переключают нативные модели Codex и Work. Никаких секретов и изменений Production без согласования.
