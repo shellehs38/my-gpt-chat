@@ -9,6 +9,13 @@
 - **Настройки внешнего провайдера в `.codex/config.toml` репозитория нынешний Codex игнорирует.** `model_providers` и `model_provider` задаются в пользовательском `~/.codex/config.toml`, а профиль — отдельным `~/.codex/svoi-freellmapi.config.toml` с запуском `codex --profile svoi-freellmapi`.
 - **ChatGPT Work и облачный Codex не начинают использовать FreeLLMAPI из-за этих файлов.** Work может читать проектные инструкции из GitHub при наличии разрешённого подключения; его внутренний провайдер этим способом не переключается. Штатный Codex без указанного профиля не меняется.
 
+## Почему не запускаем автоматически `npx freellmapi setup-codex`
+
+Проверен upstream `cli/src/tools.ts` на 2026-11-05: генератор по-прежнему записывает `[profiles.NAME]` прямо в `~/.codex/config.toml` и считает, что отдельные файлы профилей не читаются. Актуальная официальная документация Codex утверждает обратное: с Codex >=0.134.0 используются **`~/.codex/NAME.config.toml`**; старые `[profiles.*]` игнорируются. Поэтому до исправления upstream установщик **не применять**, чтобы не повредить действующую конфигурацию. Использовать приведённые ниже два проверяемых шаблона вручную.
+
+Источник upstream: https://github.com/tashfeenahmed/freellmapi/blob/main/cli/src/tools.ts
+Документация Codex: https://learn.chatgpt.com/docs/config-file/config-advanced
+
 ## Не путать ключи
 
 Нужен **единый API-ключ самого шлюза FreeLLMAPI** (раздел `Ключи → Единый ключ API`), а **не** ключ Google AI Studio, Groq, пароль панели управления или setup code. В GitHub и чат не передавать ни один из них.
