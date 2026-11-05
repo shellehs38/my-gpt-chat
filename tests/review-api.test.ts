@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { POST as chat } from "../app/api/chat/route";
-import { POST as login } from "../app/api/auth/route";
+import { GET as authStatus, POST as login } from "../app/api/auth/route";
 import { createSessionToken, getAccessConfig, readSession, SESSION_COOKIE } from "../lib/server/auth";
 import { resetRateLimitsForTests } from "../lib/server/rate-limit";
 import { ensureScaffoldRows, hasBrokenEstimateMarkdown, resolveFacadeOptions } from "../lib/server/chat";
@@ -68,9 +68,14 @@ test("independent review: successful login uses signed cookie and refuses cross-
     assert.equal((await login(makeLogin("https://attacker.example"))).status, 403);
     const response = await login(makeLogin(origin));
     assert.equal(response.status, 200);
+    const loginBody = await response.clone().json();
+    assert.equal(loginBody.authenticated, true);
+    assert.ok(Number.isSafeInteger(loginBody.expiresAt));
     const cookie = response.headers.get("set-cookie")!;
     assert.match(cookie, /HttpOnly/i); assert.match(cookie, /SameSite=strict/i);
     assert.ok(readSession(new Request(origin, { headers: { cookie: cookie.split(";")[0] } }), getAccessConfig()!));
+    const status = await authStatus(new Request(`${origin}/api/auth`, { headers: { cookie: cookie.split(";")[0] } }));
+    assert.deepEqual(await status.json(), { configured: true, authenticated: true, expiresAt: loginBody.expiresAt });
   } finally { clean(); }
 });
 
@@ -121,6 +126,28 @@ test("independent review: completed status cannot conceal missing estimate secti
     text = completeEstimate;
     assert.equal((await chat(request({ message: "Составь полную смету и сравни фасад без утепления и с утеплением", mode: "facade", facadeOptions: "both" }, token))).status, 502);
     assert.equal((await chat(request({ message: "Составь полную смету фасада без утепления", mode: "facade", facadeOptions: "without" }, token))).status, 200);
+  } finally { globalThis.fetch = priorFetch; clean(); }
+});
+
+test("estimate API preserves confirmed prices and document-mode tables remain verbatim", async () => {
+  const clean = setup(), priorFetch = globalThis.fetch;
+  try {
+    const token = createSessionToken(getAccessConfig()!);
+    globalThis.fetch = async () => new Response(JSON.stringify({ status: "completed", output: [{ status: "completed", content: [{ type: "output_text", text: completeEstimate }] }] }), { status: 200 });
+    const documentResponse = await chat(request({ message: "Подготовь акт выполненных работ", mode: "documents" }, token));
+    assert.equal(documentResponse.status, 200);
+    const documentData = await documentResponse.json();
+    assert.equal(documentData.reply, completeEstimate);
+    assert.equal(documentData.calculation, "none");
+
+    const estimateResponse = await chat(request({ message: "Проверь эту смету", mode: "estimate" }, token));
+    assert.equal(estimateResponse.status, 200);
+    const estimateData = await estimateResponse.json();
+    const estimateReply = String(estimateData.reply);
+    assert.equal(estimateData.calculation, "estimate");
+    assert.match(estimateReply, /Монтаж облицовки \| м² \| 2 \| 50 \| 100,00/);
+    assert.match(estimateReply, /Облицовка \| м² \| 2 \| 50 \| 100,00/);
+    assert.doesNotMatch(estimateReply, /Цена для клиента/);
   } finally { globalThis.fetch = priorFetch; clean(); }
 });
 

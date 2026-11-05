@@ -208,6 +208,21 @@ test("login attempt budgets are shared by native and browser routes", async () =
   } finally { restore(); }
 });
 
+test("native requests already blocked by one address do not exhaust the shared login allowance", async () => {
+  const restore = environment();
+  try {
+    const blocked = { "x-forwarded-for": "203.0.113.20" };
+    for (let index = 0; index < 5; index++) {
+      assert.equal((await nativeLogin(nativeRequest("/api/native/auth", { password: "incorrect" }, undefined, blocked))).status, 401);
+    }
+    for (let index = 0; index < 30; index++) {
+      assert.equal((await nativeLogin(nativeRequest("/api/native/auth", { password: "incorrect" }, undefined, blocked))).status, 429);
+    }
+    const owner = await nativeLogin(nativeRequest("/api/native/auth", { password: process.env.ASSISTANT_ACCESS_PASSWORD }, undefined, { "x-forwarded-for": "203.0.113.21" }));
+    assert.equal(owner.status, 200);
+  } finally { restore(); }
+});
+
 test("native project context stays separate from the exact continuation question and browser input", async () => {
   const restore = environment(), oldFetch = globalThis.fetch;
   const payloads: Record<string, unknown>[] = [];

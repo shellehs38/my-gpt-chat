@@ -13,7 +13,7 @@ for (const candidate of [process.env.CHROME_BIN,'/usr/bin/chromium','/usr/bin/ch
   try { await access(candidate); chrome=candidate; break; } catch {}
 }
 
-test('browser project history and concurrent save contract', {skip:chrome?false:'Chromium is required for the real IndexedDB checks',timeout:30000}, async t => {
+test('browser project history and concurrent save contract', {skip:chrome?false:'Chromium is required for the real IndexedDB checks',timeout:60000}, async t => {
   const directory = await mkdtemp(join(tmpdir(),'facade-store-test-'));
   const server=createServer(async(req,res)=>{
     if(req.url==='/') {res.setHeader('Content-Type','text/html');res.end('<!doctype html><title>Project storage tests</title>');return;}
@@ -23,13 +23,13 @@ test('browser project history and concurrent save contract', {skip:chrome?false:
   });
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
   const origin='http://127.0.0.1:'+server.address().port;
-  const child=spawn(chrome,['--headless=new','--no-sandbox','--disable-dev-shm-usage','--remote-debugging-port=0','--user-data-dir='+directory,'about:blank'],{stdio:['ignore','ignore','pipe']});
+  const child=spawn(chrome,['--headless=new','--no-sandbox','--disable-dev-shm-usage','--no-first-run','--no-default-browser-check','--remote-debugging-port=0','--user-data-dir='+directory,'about:blank'],{stdio:['ignore','ignore','pipe']});
   let socket;
   try {
     const devtools=await new Promise((resolve,reject)=>{
-      let text='';const timeout=setTimeout(()=>reject(Error('Chromium did not start')),10000);
+      let text='';const timeout=setTimeout(()=>reject(Error('Chromium did not start within 30 seconds: '+text.trim())),30000);
       child.stderr.on('data',chunk=>{text+=chunk;const match=text.match(/DevTools listening on (ws:\/\/[^\s]+)/);if(match){clearTimeout(timeout);resolve(match[1]);}});
-      child.once('error',reject);child.once('exit',code=>{clearTimeout(timeout);reject(Error('Chromium exited: '+code));});
+      child.once('error',error=>{clearTimeout(timeout);reject(error);});child.once('exit',code=>{clearTimeout(timeout);reject(Error('Chromium exited: '+code));});
     });
     const target=await fetch('http://'+new URL(devtools).host+'/json/new?'+encodeURIComponent(origin),{method:'PUT'}).then(r=>r.json());
     socket=new WebSocket(target.webSocketDebuggerUrl);

@@ -1,0 +1,86 @@
+{
+  "passed": true,
+  "headers": {
+    "content-security-policy": "default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; manifest-src 'self'; worker-src 'self' blob:",
+    "cross-origin-opener-policy": "same-origin",
+    "cross-origin-resource-policy": "same-origin",
+    "permissions-policy": "camera=(), geolocation=(), microphone=(), payment=(), usb=()",
+    "strict-transport-security": "max-age=31536000; includeSubDomains",
+    "x-content-type-options": "nosniff",
+    "x-robots-tag": "noindex, nofollow, noarchive"
+  },
+  "brandResourcePolicy": "cross-origin",
+  "mobile": {
+    "viewport": 390,
+    "scrollWidth": 390,
+    "messageTop": 650.90625,
+    "modeColumns": "171px 171px",
+    "focusOutline": ""
+  },
+  "ordinaryLogoutLatestDraft": true,
+  "absoluteSessionExpiryFlush": true,
+  "focusSessionExpiryFlush": true,
+  "ledgerGet401Lock": true,
+  "ledgerPost401Lock": true,
+  "driveConnection401Lock": true,
+  "expiredSessionFlush": true,
+  "ledgerMemoryClear": true,
+  "localClear": {
+    "workspace": null,
+    "ledger": null,
+    "outboxes": [],
+    "cloud": "{\"version\":1,\"paused\":true}"
+  },
+  "remaining": {
+    "workspace": null,
+    "ledger": null,
+    "outboxes": [],
+    "cloud": "{\"version\":1,\"paused\":true}"
+  },
+  "blockedStoragePreserved": true,
+  "pageErrors": [],
+  "calculatorPages": [
+    {
+      "path": "/calculators/",
+      "width": 390,
+      "status": 200,
+      "overflow": false,
+      "pageErrors": []
+    },
+    {
+      "path": "/house-calculator/index.html?example=8x14",
+      "width": 390,
+      "status": 200,
+      "overflow": false,
+      "pageErrors": []
+    },
+    {
+      "path": "/facade-calculator/",
+      "width": 390,
+      "status": 200,
+      "overflow": false,
+      "pageErrors": []
+    },
+    {
+      "path": "/calculators/",
+      "width": 1440,
+      "status": 200,
+      "overflow": false,
+      "pageErrors": []
+    },
+    {
+      "path": "/house-calculator/index.html?example=8x14",
+      "width": 1440,
+      "status": 200,
+      "overflow": false,
+      "pageErrors": []
+    },
+    {
+      "path": "/facade-calculator/",
+      "width": 1440,
+      "status": 200,
+      "overflow": false,
+      "pageErrors": []
+    }
+  ]
+}

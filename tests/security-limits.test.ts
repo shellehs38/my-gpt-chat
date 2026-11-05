@@ -55,6 +55,19 @@ test("five failed logins prevent another password attempt from the same address"
   } finally { restore(); }
 });
 
+test("requests already blocked by one address do not exhaust the shared login allowance", async () => {
+  const restore = environment();
+  try {
+    for (let index = 0; index < 5; index++) {
+      assert.equal((await login(request("/api/auth", { password: "incorrect" }, "", "203.0.113.10"))).status, 401);
+    }
+    for (let index = 0; index < 30; index++) {
+      assert.equal((await login(request("/api/auth", { password: "incorrect" }, "", "203.0.113.10"))).status, 429);
+    }
+    assert.equal((await login(request("/api/auth", { password: process.env.ASSISTANT_ACCESS_PASSWORD }, "", "203.0.113.11"))).status, 200);
+  } finally { restore(); }
+});
+
 test("rate windows expire and concurrency slots are bounded and released exactly once", () => {
   resetRateLimitsForTests();
   assert(takeRateLimit("window", 1, 100, 1000));

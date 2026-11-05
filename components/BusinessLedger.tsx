@@ -2,12 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
+import { LEDGER_PENDING_STORAGE_KEY } from "@/lib/ledger-contract";
 import type { LedgerClient, LedgerCommand, LedgerReply, LedgerSelection, LedgerStatus } from "@/lib/ledger-contract";
 import styles from "./BusinessLedger.module.css";
 
 const setupUrl = "https://vercel.com/shellehs38/my-gpt-chat/settings/environment-variables";
 const spreadsheetUrl = "https://docs.google.com/spreadsheets/d/1-frD3ABf1G-IH1cd31Fktb9NY2XPLg05VGLOwSsgA2U/edit?gid=0";
-const pendingStorageKey = "svoi-lyudi.ledger.pending.v1";
 type PendingRecord = { version: 1; payload: Extract<LedgerCommand, { kind: "message" }>; stage: "pending" | "choice"; createdAt: number };
 function parsePending(raw: string): PendingRecord {
   const value: unknown = JSON.parse(raw);
@@ -58,7 +58,7 @@ function ledgerReply(data: Record<string, unknown>): LedgerReply {
 }
 
 /** Owner-only workspace. Session storage keeps only the last unfinished command for idempotent recovery. */
-export default function BusinessLedger({ onBusyChange }: { onBusyChange?: (busy: boolean) => void } = {}) {
+export default function BusinessLedger({ onBusyChange, onUnauthorized }: { onBusyChange?: (busy: boolean) => void; onUnauthorized?: () => void } = {}) {
   const [status, setStatus] = useState<LedgerStatus | null>(null);
   const [statusLoading, setStatusLoading] = useState(true);
   const [statusError, setStatusError] = useState("");
@@ -74,7 +74,9 @@ export default function BusinessLedger({ onBusyChange }: { onBusyChange?: (busy:
   const [storageWarning, setStorageWarning] = useState("");
   const pendingRef = useRef<PendingRecord | null>(null);
   const busyCallback = useRef(onBusyChange);
+  const unauthorizedCallback = useRef(onUnauthorized);
   busyCallback.current = onBusyChange;
+  unauthorizedCallback.current = onUnauthorized;
   const inFlight = useRef(false);
   const mounted = useRef(true);
   const identity = useRef<{ message: string; requestId: string } | null>(null);
@@ -82,12 +84,12 @@ export default function BusinessLedger({ onBusyChange }: { onBusyChange?: (busy:
 
   function persistPending(record: PendingRecord) {
     pendingRef.current = record; setPending(record);
-    try { window.sessionStorage.setItem(pendingStorageKey, JSON.stringify(record)); }
+    try { window.sessionStorage.setItem(LEDGER_PENDING_STORAGE_KEY, JSON.stringify(record)); }
     catch { setStorageWarning("Браузер не сохранил незавершённую команду. Не закрывайте вкладку до подтверждения результата; при сбое используйте тот же запрос здесь."); }
   }
   function clearPending() {
     pendingRef.current = null; setPending(null); setRecovered(false);
-    try { window.sessionStorage.removeItem(pendingStorageKey); }
+    try { window.sessionStorage.removeItem(LEDGER_PENDING_STORAGE_KEY); }
     catch { setStorageWarning("Хранилище вкладки недоступно. Перед новой записью после перезагрузки проверьте предыдущую операцию в таблице."); }
   }
   async function refreshStatus() {
@@ -95,6 +97,7 @@ export default function BusinessLedger({ onBusyChange }: { onBusyChange?: (busy:
     setStatusLoading(true); setStatusError("");
     try {
       const response = await fetch("/api/ledger", { cache: "no-store" });
+      if (response.status === 401) unauthorizedCallback.current?.();
       const data = await responseBody(response);
       if (!response.ok) throw new Error(response.status === 401 ? "Сессия владельца не распознана. Вернитесь на главную страницу сайта и войдите снова." : response.status === 403 ? "Сервер отклонил доступ. Проверьте вход владельца." : response.status >= 500 ? "Ошибка сервера при проверке. Данные таблицы не изменены. Повторите проверку позже." : typeof data.error === "string" ? data.error : "Не удалось проверить подключение таблицы.");
       if (typeof data.configured !== "boolean" || typeof data.message !== "string") throw new Error("Сервер не подтвердил состояние подключения.");
@@ -106,7 +109,7 @@ export default function BusinessLedger({ onBusyChange }: { onBusyChange?: (busy:
   useEffect(() => {
     mounted.current = true;
     try {
-      const raw = window.sessionStorage.getItem(pendingStorageKey);
+      const raw = window.sessionStorage.getItem(LEDGER_PENDING_STORAGE_KEY);
       if (raw) {
         const restored = parsePending(raw);
         pendingRef.current = restored; setPending(restored); setRecovered(true); setFailed(restored.payload);
@@ -115,7 +118,7 @@ export default function BusinessLedger({ onBusyChange }: { onBusyChange?: (busy:
       }
     } catch { setStorageWarning("Не удалось прочитать незавершённую команду этой вкладки. Перед повторным расходом проверьте журнал в таблице; не закрывайте вкладку до результата."); }
     void refreshStatus();
-    return () => { mounted.current = false; statusRequest.current++; };
+    return () => { mounted.current = false; statusRequest.current++; busyCallback.current?.(false); };
     // Status is fetched on authenticated mount; refreshing is an explicit owner action.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -133,6 +136,7 @@ export default function BusinessLedger({ onBusyChange }: { onBusyChange?: (busy:
     if (snapshot.kind === "message") persistPending({ version: 1, payload: snapshot, stage: "pending", createdAt: existing?.createdAt ?? Date.now() });
     try {
       const response = await fetch("/api/ledger", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(snapshot) });
+      if (response.status === 401) unauthorizedCallback.current?.();
       const data = await responseBody(response);
       if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : "Не удалось выполнить команду. Результат записи не подтверждён.");
       const result = ledgerReply(data);
