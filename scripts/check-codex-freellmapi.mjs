@@ -55,8 +55,8 @@ if (!KEY) {
         } else {
           const contentType = inference.headers.get('content-type') || '';
           const sse = await inference.text();
-          const completed = /event:\\s*response\\.completed|\\\"type\\\"\\s*:\\s*\\\"response\\.completed\\\"/.test(sse);
-          const failed = /event:\\s*response\\.failed|\\\"type\\\"\\s*:\\s*\\\"response\\.failed\\\"/.test(sse);
+          const completed = /event:\s*response\.completed|"type"\s*:\s*"response\.completed"/.test(sse);
+          const failed = /event:\s*response\.failed|"type"\s*:\s*"response\.failed"/.test(sse);
           if (!contentType.includes('text/event-stream') || !completed || failed) {
             fail('POST /v1/responses: статус 200, но корректное событие SSE response.completed не подтверждено.');
           } else {
