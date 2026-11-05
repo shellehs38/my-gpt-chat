@@ -5,6 +5,7 @@ const config: NextConfig = {
   experimental: { cpus: 2 },
   poweredByHeader: false,
   outputFileTracingIncludes: {
+    "/api/documents/export": ["./public/brand/logo-sl-approved-light.png", "./native/assets/fonts/DejaVuSans.ttf", "./native/assets/fonts/DejaVuSans-Bold.ttf"],
     "/api/chat": ["./data/codebase-memory.json", "./data/facade-material-catalog.json"],
     "/api/mcp": ["./data/codebase-memory.json"],
     "/api/project-memory": ["./data/codebase-memory.json"],

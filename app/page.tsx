@@ -17,8 +17,8 @@ import { brandedDocumentHtml, brandedMarkdown, COMPANY_LOGO_URL, loadCompanyLogo
 
 type AuthState = { authenticated: boolean; configured: boolean };
 const bytes = (value: unknown) => new TextEncoder().encode(typeof value === "string" ? value : JSON.stringify(value)).byteLength;
-function download(content: string, name: string, type: string) {
-  const url = URL.createObjectURL(new Blob([content], { type }));
+function download(content: string | Blob, name: string, type: string) {
+  const url = URL.createObjectURL(content instanceof Blob ? content : new Blob([content], { type }));
   const link = document.createElement("a"); link.href = url; link.download = name; link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
@@ -168,10 +168,10 @@ export default function Home() {
   }
   async function copyAnswer() {
     if (!current) return;
-    try { await navigator.clipboard.writeText(brandedMarkdown(serializeEstimateDocument(current.document, current.calculation !== "none"), window.location.origin)); setNotice("Скопирована текущая версия с вашими правками и ссылкой на логотип. Для файла со встроенным изображением используйте «Скачать документ с логотипом»."); }
+    try { await navigator.clipboard.writeText(brandedMarkdown(serializeEstimateDocument(current.document, current.calculation !== "none"), window.location.origin)); setNotice("Скопирован текст текущей версии с вашими правками и ссылкой на логотип. Для файла со встроенным изображением используйте «Скачать PDF», «Скачать Word» или «Скачать Excel»."); }
     catch { setNotice("Копирование недоступно в этом браузере. Используйте «Скачать текст»."); }
   }
-  async function downloadBrandedDocument() {
+  async function downloadBrandedDocument(format: "html" | "pdf" | "docx" | "xlsx" = "html") {
     if (!current || !documentContent.current || exportInFlight.current) return;
     exportInFlight.current = true; setExportBusy(true); setNotice("");
     const source = documentContent.current;
@@ -180,11 +180,19 @@ export default function Home() {
     snapshot.querySelectorAll("textarea").forEach((input, index) => { input.value = inputs[index].value; });
     const title = modes.find((item) => item.id === current.mode)?.label ?? "Документ";
     const versionDate = new Date(current.createdAt).toLocaleString("ru-RU", { timeZone: "Asia/Irkutsk" });
+    const mode = current.mode;
+    const markdown = serializeEstimateDocument(current.document, current.calculation !== "none");
     try {
-      const logo = await loadCompanyLogo();
-      download(brandedDocumentHtml(snapshot, logo, title, versionDate), "svoi-lyudi-document.html", "text/html;charset=utf-8");
-      setNotice("Документ со встроенным логотипом скачан в HTML. Откройте файл в браузере; через меню печати его можно сохранить в PDF.");
-    } catch (cause) { setNotice(cause instanceof Error ? cause.message : "Не удалось подготовить документ с логотипом. Повторите выгрузку."); }
+      if (format === "html") {
+        const logo = await loadCompanyLogo();
+        download(brandedDocumentHtml(snapshot, logo, title, versionDate), "svoi-lyudi-document.html", "text/html;charset=utf-8");
+      } else {
+        const response = await fetch("/api/documents/export", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ format, title, versionDate, markdown }) });
+        if (!response.ok) { const data = await response.json(); throw new Error(data.error || "Не удалось сформировать документ."); }
+        download(await response.blob(), `svoi-lyudi-document.${format}`, response.headers.get("content-type") || "application/octet-stream");
+      }
+      setNotice(`Документ ${format.toUpperCase()} со встроенным логотипом скачан. Изображение находится внутри файла и открывается без интернета.`, mode);
+    } catch (cause) { setNotice(cause instanceof Error ? cause.message : "Не удалось подготовить документ с логотипом. Повторите выгрузку.", mode); }
     finally { exportInFlight.current = false; setExportBusy(false); }
   }
   return <main className="app-shell">
@@ -208,7 +216,10 @@ export default function Home() {
         {notice && <p className="status" role="status">{notice}</p>}
         {current && <article className="answer"><img className="document-logo" src={COMPANY_LOGO_URL} width={1672} height={941} alt="Логотип СВОИ ЛЮДИ на документе" /><div className="answer-heading"><span className="answer-dot" /><h3>Ответ помощника</h3></div><label className="field-label version-label" htmlFor="document-version">Сохранённая версия</label><select id="document-version" value={current.id} onChange={(event) => setWorkspace((value) => ({ ...value, activeDocumentId: event.target.value }))}>{versions.map((version, index) => <option key={version.id} value={version.id}>Версия {index + 1} · {new Date(version.createdAt).toLocaleString("ru-RU")} · {version.prompt.slice(0, 48)}</option>)}</select><div ref={documentContent}><DocumentEditor document={current.document} onEdit={editCell} calculate={current.calculation !== "none"} /></div>
           <div className="estimate-edit-actions">{currentCalculation?.hasCalculation && <p>Меняйте поля таблицы или карточек. Единицы измерения сохраняются; суммы рассчитываются автоматически. Неизвестная цена требует уточнения.</p>}<button className="primary-button" type="button" disabled={requestBusy} onClick={requestRevision}>{selectedMode.revisionLabel}</button></div>
-          <div className="action-row"><button className="secondary-button" type="button" disabled={exportBusy} onClick={() => void downloadBrandedDocument()}>{exportBusy ? "Готовлю файл с логотипом…" : "Скачать документ с логотипом"}</button><button className="secondary-button" type="button" onClick={copyAnswer}>Копировать ответ</button><button className="secondary-button" type="button" onClick={() => download(brandedMarkdown(serializeEstimateDocument(current.document, current.calculation !== "none"), window.location.origin), `builder-${workspace.mode}.md`, "text/markdown;charset=utf-8")}>Скачать текст</button><button className="secondary-button" type="button" onClick={snapshot}>Сохранить отдельную версию</button></div></article>}
+          <p className="hint">Сметы, договоры и другие документы скачиваются с логотипом «СВОИ ЛЮДИ». Выберите формат:</p>
+          <div className="action-row" aria-label="Скачать документ с логотипом">{([['pdf', 'Скачать PDF'], ['docx', 'Скачать Word'], ['xlsx', 'Скачать Excel'], ['html', 'Скачать HTML']] as const).map(([format, label]) => <button className="secondary-button" type="button" key={format} disabled={exportBusy} onClick={() => void downloadBrandedDocument(format)}>{label}</button>)}</div>
+          {exportBusy && <p role="status">Готовлю файл со встроенным логотипом…</p>}
+          <div className="action-row"><button className="secondary-button" type="button" onClick={copyAnswer}>Копировать текст</button><button className="secondary-button" type="button" onClick={() => download(brandedMarkdown(serializeEstimateDocument(current.document, current.calculation !== "none"), window.location.origin), `builder-${workspace.mode}.md`, "text/markdown;charset=utf-8")}>Скачать текст</button><button className="secondary-button" type="button" onClick={snapshot}>Сохранить отдельную версию</button></div><p className="hint">Копирование и текстовый файл передают ссылку на логотип. Для отправки клиенту используйте PDF, Word, Excel или HTML выше.</p></article>}
         {messages.length > 0 && <details className="conversation-history"><summary>История вкладки ({messages.length})</summary>{messages.map((item) => <div className="history-message" key={item.id}><strong>{item.role === "user" ? "Вы" : "Помощник"}</strong><p>{item.content}</p>{item.documentId && versions.some((version) => version.id === item.documentId) && <button className="secondary-button" type="button" onClick={() => setWorkspace((value) => ({ ...value, activeDocumentId: item.documentId! }))}>Открыть сохранённый ответ</button>}</div>)}</details>}
       </section>
     </>}
