@@ -1,0 +1,17 @@
+# ONLY append this provider section to your USER config:
+#   Windows: $HOME\.codex\config.toml
+#   Linux/macOS: ~/.codex/config.toml
+# Do not place it in the repository .codex/config.toml:
+# Codex ignores model_providers from project-local config.
+# Never put a real API key in this file or commit one to GitHub.
+
+[model_providers.svoi_freellmapi]
+name = "SVOI LYUDI FreeLLMAPI (experimental)"
+base_url = "https://freellmapi-production-3129.up.railway.app/v1"
+env_key = "SVOI_FREELLMAPI_UNIFIED_KEY"
+env_key_instructions = "Copy the UNIFIED gateway key in FreeLLMAPI dashboard; do not use Groq/Gemini provider keys."
+wire_api = "responses"
+requires_openai_auth = false
+request_max_retries = 2
+stream_max_retries = 1
+stream_idle_timeout_ms = 120000
