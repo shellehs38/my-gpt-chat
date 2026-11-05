@@ -1,0 +1,8 @@
+# Save as a SEPARATE USER-LEVEL file:
+#   Windows: $HOME\.codex\svoi-freellmapi.config.toml
+#   Linux/macOS: ~/.codex/svoi-freellmapi.config.toml
+# Activate only with: codex --profile svoi-freellmapi
+# Never set this as the default model provider for ordinary Codex runs.
+
+model_provider = "svoi_freellmapi"
+model = "auto"
