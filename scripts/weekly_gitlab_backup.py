@@ -18,9 +18,9 @@ def targets(rows, stamp):
         if ref == 'refs/remotes/origin/HEAD':
             continue
         if ref.startswith('refs/remotes/github-pull/'):
-            dest = 'refs/heads/backups/' + stamp + '/github-pull/' + ref[len('refs/remotes/github-pull/'):]
+            dest = 'refs/heads/backups/' + stamp + '/pull-requests/' + ref[len('refs/remotes/github-pull/'):]
         elif ref.startswith('refs/remotes/origin/'):
-            dest = 'refs/heads/backups/' + stamp + '/' + ref[len('refs/remotes/origin/'):]
+            dest = 'refs/heads/backups/' + stamp + '/branches/' + ref[len('refs/remotes/origin/'):]
         elif ref.startswith('refs/tags/'):
             dest = 'refs/tags/backups/' + stamp + '/' + ref[len('refs/tags/'):]
         else:
