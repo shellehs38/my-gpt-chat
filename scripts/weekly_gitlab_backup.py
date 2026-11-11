@@ -17,7 +17,9 @@ def targets(rows, stamp):
         oid, ref = row.split()
         if ref == 'refs/remotes/origin/HEAD':
             continue
-        if ref.startswith('refs/remotes/origin/'):
+        if ref.startswith('refs/remotes/github-pull/'):
+            dest = 'refs/heads/backups/' + stamp + '/github-pull/' + ref[len('refs/remotes/github-pull/'):]
+        elif ref.startswith('refs/remotes/origin/'):
             dest = 'refs/heads/backups/' + stamp + '/' + ref[len('refs/remotes/origin/'):]
         elif ref.startswith('refs/tags/'):
             dest = 'refs/tags/backups/' + stamp + '/' + ref[len('refs/tags/'):]
@@ -33,7 +35,7 @@ def main():
         raise SystemExit('Missing repository secret GITLAB_BACKUP_SSH_KEY; backup is not configured.')
     repo = os.environ['GITHUB_REPOSITORY'].split('/')[-1]
     stamp = datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%SZ') + '-' + os.environ['GITHUB_RUN_ID'] + '-' + os.environ.get('GITHUB_RUN_ATTEMPT', '1')
-    rows = git('for-each-ref', '--format=%(objectname) %(refname)', 'refs/remotes/origin', 'refs/tags').splitlines()
+    rows = git('for-each-ref', '--format=%(objectname) %(refname)', 'refs/remotes/origin', 'refs/remotes/github-pull', 'refs/tags').splitlines()
     expected = targets(rows, stamp)
     if not expected:
         raise SystemExit('No references to back up')

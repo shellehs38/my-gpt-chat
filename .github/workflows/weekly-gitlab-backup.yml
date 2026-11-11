@@ -17,7 +17,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Fetch every source branch and tag
-        run: git fetch origin '+refs/heads/*:refs/remotes/origin/*' --tags
+        run: git fetch origin '+refs/heads/*:refs/remotes/origin/*' '+refs/pull/*:refs/remotes/github-pull/*' --tags
       - name: Back up and verify restoration
         env:
           GITLAB_BACKUP_SSH_KEY: ${{ secrets.GITLAB_BACKUP_SSH_KEY }}
