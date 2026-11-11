@@ -53,3 +53,14 @@
 @media(max-width:600px) { .heading { flex-direction:column; } .heading .secondary { width:100%; } .context,.summary { grid-template-columns:1fr; } .actions { flex-direction:column; } .actions button { width:100%; } .expenses li { flex-direction:column; gap:8px; } }
 .warning,.recovery { padding:13px 15px; border:1px solid #e4d3a3; border-radius:10px; background:#fff8e7; color:#654b0b; font-size:13px; line-height:1.6; margin:14px 0; }
 .recovery p { margin:8px 0 12px; }
+
+.sheetAccess { margin:16px 0 20px; }
+.sheetButton { display:block; width:100%; min-height:48px; padding:13px 16px; border-radius:10px; border:1px solid #176b4b; background:#176b4b; color:#fff!important; font-weight:700; font-size:16px; text-align:center; text-decoration:none; }
+.sheetButton:hover { background:#10543a; }
+.sheetButton:focus-visible { outline:3px solid #b5dcc4; outline-offset:3px; }
+
+.quickExpense { display: flex; flex-direction: column; gap: 10px; margin: 20px 0; padding: 18px; border: 1px solid #cadbd1; border-radius: 14px; }
+.quickExpense h3 { margin: 0 0 4px; }
+.quickExpense label { font-weight: 650; }
+.quickExpense input, .quickExpense select { width: 100%; min-height: 48px; padding: 12px; border: 1px solid #b9cfc1; border-radius: 10px; font: inherit; background: white; color: #18291f; }
+.quickExpense button { margin-top: 8px; }
