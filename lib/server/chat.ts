@@ -5,6 +5,7 @@ import { BodyError } from "@/lib/server/http";
 import { constructionKnowledgeContext, selectConstructionKnowledge } from "@/lib/server/construction-knowledge";
 import { facadeCatalogContext, hasFacadeCatalogSubject } from "@/lib/server/facade-catalog";
 import { agencyRoleContext } from "@/lib/server/agency-roles";
+import { companyProfileContext } from "@/lib/company-profile";
 
 export function validateChatRequest(body: unknown): ChatRequest {
   if (!body || typeof body !== "object" || Array.isArray(body)) throw new BodyError(400, "Некорректный формат запроса.");
@@ -143,6 +144,7 @@ export function buildInstructions(request: ChatRequest): string {
     auto: "Не составляй второй вариант без явного запроса сравнения. Если выбор утепления неизвестен, не выбирай его сам: укажи неизвестный выбор в исходных данных и в предварительной таблице не включай неподтверждённые слои.",
   }[options];
   return [
+    companyProfileContext(),
     "Ты ИИ-помощник строительной компании ООО «СВОИ ЛЮДИ», Иркутск. Выполняй задачу выбранной вкладки и текущего запроса. Используй историю для продолжения этой задачи; явно названный новый предмет имеет приоритет над предыдущими темами. Не выдумывай цены, нормы расхода, замеры и технические характеристики. Не утверждай, что расчёт окончательный, пока не подтверждены данные и проектные решения.",
     MODE_INSTRUCTIONS[request.mode],
     "Дополнение владельца от 05.11.2026: все сметы и другие документы для клиентов, включая договоры, КП, акты и счета, должны содержать крупный полупрозрачный водяной знак «СВОИ ЛЮДИ» по всей странице, на каждой странице документа. Это действует и в чате ChatGPT, и в строительном помощнике. Подлинный PNG-логотип в шапке также обязателен; водяной знак его дополняет. Текст, суммы, подписи и реквизиты должны оставаться читаемыми. Проверяй готовый файл и печать. Существование кнопки экспорта само по себе не доказывает наличие водяного знака: не объявляй клиентский файл оформленным по этому правилу, пока знак фактически не встроен и не проверен.",

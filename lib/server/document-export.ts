@@ -6,6 +6,7 @@ import ExcelJS from "exceljs";
 import { AlignmentType, Document, Footer, Header, ImageRun, Packer, Paragraph, Table, TableCell, TableLayoutType, TableRow, TextRun, WidthType } from "docx";
 import { parseEstimateDocument, type EstimateDocument } from "../estimate";
 import { COMPANY_NAME } from "../document-branding";
+import { fillCompanyDetails } from "../company-profile";
 import { BodyError } from "./http";
 
 export const DOCUMENT_BODY_BYTES = 400_000;
@@ -210,7 +211,7 @@ async function excel(input: DocumentExport, content: EstimateDocument, logo: Buf
 
 export async function createBrandedDocument(input: DocumentExport): Promise<Buffer> {
   // The browser sends its current, already serialized version. Never recalculate contracts here.
-  const content = parseEstimateDocument(input.markdown, "export", false);
+  const content = parseEstimateDocument(fillCompanyDetails(input.markdown), "export", false);
   const tables = content.blocks.filter(b => b.type === "table");
   if (tables.some(t => t.headers.length > 12 || t.headers.some(h => h.length > 200)) || tables.reduce((n, t) => n + t.rows.length, 0) > 600) throw new BodyError(400, "Документ слишком большой: до 600 строк, 12 столбцов и 200 символов в заголовке столбца.");
   const logo = await approvedLogo();
