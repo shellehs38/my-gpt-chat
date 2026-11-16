@@ -1,0 +1,13 @@
+{
+  "name": "svoi-lyudi-playwright-smoke",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "playwright test",
+    "test:ui": "playwright test --reporter=list"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.65.1"
+  }
+}
