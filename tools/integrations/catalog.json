@@ -21,7 +21,7 @@
       "id": "markitdown",
       "repository": "microsoft/markitdown",
       "kind": "python",
-      "status": "isolated dependency staged; CI verification pending",
+      "status": "CI verified: installed and converted synthetic text 2026-11-16",
       "condition": "Local-only conversion prototype, no client files"
     },
     {
@@ -35,14 +35,14 @@
       "id": "browser-use",
       "repository": "browser-use/browser-use",
       "kind": "python+browser",
-      "status": "isolated dependency staged; CI verification pending",
+      "status": "CI verified: package install/version only 2026-11-16; browser agent unconfigured",
       "condition": "Browser login permissions, sandbox and provider costs"
     },
     {
       "id": "playwright",
       "repository": "microsoft/playwright",
       "kind": "e2e",
-      "status": "isolated dependency staged; CI verification pending",
+      "status": "CI verified: installed Playwright/Chromium; 3 read-only E2E tests passed 2026-11-16",
       "condition": "Read-only smoke tests against local Next.js"
     },
     {
@@ -56,14 +56,14 @@
       "id": "docling",
       "repository": "docling-project/docling",
       "kind": "python",
-      "status": "isolated dependency staged; CI verification pending",
+      "status": "CI verified: package install/version only 2026-11-16; real conversion untested",
       "condition": "Heavy model/download memory requirements; do not parse private docs yet"
     },
     {
       "id": "mem0",
       "repository": "mem0ai/mem0",
       "kind": "python",
-      "status": "isolated dependency staged; CI verification pending",
+      "status": "CI verified: package install/version only 2026-11-16; memory backend unconfigured",
       "condition": "Needs LLM/embed/vector configuration for functional memory; no client data"
     },
     {
@@ -94,5 +94,6 @@
       "status": "not deployed",
       "condition": "Alternative to n8n; choose after cost/license comparison"
     }
-  ]
+  ],
+  "test_report_url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/43799461728"
 }
