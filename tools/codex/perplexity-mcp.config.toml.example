@@ -1,0 +1,7 @@
+# Optional local Codex MCP setup. Append to user-level Codex config only after review.
+# The API key belongs in the local process environment, never in Git.
+[mcp_servers.perplexity]
+url = "https://api.perplexity.ai/mcp"
+bearer_token_env_var = "PERPLEXITY_API_KEY"
+startup_timeout_sec = 30
+tool_timeout_sec = 300
