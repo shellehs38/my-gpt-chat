@@ -26,6 +26,10 @@ OAuth openid+drive.file, стабильный owner. DriveAutosave: неизме
 
 Codebase Memory 0.12.1: AGENTS.md, код и тесты приоритетнее графа. Проверять свежесть/охват, после правок memory:index и memory:check. Клиентов/секреты/переписку не индексировать. docs/CODEBASE_MEMORY.md.
 
+## AUTOMATION
+
+Разрешённые операции плагинов и GitHub выполняются автоматически. Для регулярных проверок использовать события или расписание; подтверждать реальный результат. Участие владельца при OAuth, недостающих правах и действиях с отдельным разрешением. См. AGENTS.md и docs/CODEX_WORK_SHARED_CONTEXT.md.
+
 ## SHARED CHAT MEMORY
 
 Сборочный data/codebase-memory.json: /api/mcp (get_project_memory/get_memory_status/search_codebase/get_file_outline), /api/project-memory (status/sections). Публичные правила/символы + revision/fingerprint, без клиентов, секретов, диалогов и внешней записи.
