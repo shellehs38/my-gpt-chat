@@ -2,7 +2,7 @@
 
 # Vercel support request — draft, not sent
 
-Prepared 19 November 2026. Sending requires a separate instruction from the owner.
+Prepared 19 November 2026. Use this draft if the provisioning error persists after the Supabase project resumes. Sending requires a separate instruction from the owner.
 
 **Subject:** One project consistently fails resource provisioning before build while a sibling project builds the same Git SHA.
 
@@ -24,6 +24,10 @@ Failing build-event endpoints return no build events. Successful sibling logs sh
 
 The main public alias remains assigned to the successful 4 November deployment `dpl_H4BNsqR5CbWeg9CPfGqZqZFwvDam`, SHA `9c8dcb52c89c68aaf2282cc33b2b04f59d0bea33`. Public status reports operational. No code, environment values, plan, deployments or aliases were changed during the audit.
 
-**Request:** please inspect the internal provisioning trace and effective project-level build-resource configuration/entitlements for the failing deployments. Identify the exact failed allocation or validation, whether a quota/region/hidden setting is involved, and a reversible correction. Also verify both project GitHub bindings against current repository ID 1413195593; our withGitRepoInfo responses do not expose the numeric binding/installation IDs. We have no evidence that a stale binding is causal. Our available read-only API output does not expose complete builder settings or quota counters. Please do not change the plan or incur charges without owner approval.
+Vercel Storage reports that the Supabase resource `supabase-coral-planet` (`store_CWHeLik7O6o0RbTP`, external project ref `ipjakegqcqjkejrwdcts`) is suspended. It is connected only to `my-gpt-chat` in Preview and Production with `deployments.required=true`. Its notification directs the owner to resume the project in Supabase Dashboard. The Vercel project filter by GitHub repository ID `1413195593` returned both projects.
+
+The latest comparison is Preview on SHA `6f1ef0655b7adc5738cb597afbe3981d19d51af4`: `dpl_58JxTQLSeWrCkExBuujo3deyoTtp` failed at provisioning after 502 ms with no build events, while `dpl_2kKk3wzB1xG4tUVFk5qeAotjX6BH` reached READY.
+
+**Request:** if a new Preview still fails after Supabase resumes, please verify the synchronized resource state and inspect the provisioning trace. Identify the blocking validation and a reversible correction. Please preserve the existing resource and project connections and do not change the plan or incur charges without owner approval.
 
 Evidence and boundaries: [integration audit](INTEGRATION_AUDIT_20261119.md). No credentials or customer records are attached.

@@ -83,15 +83,22 @@ Check runs для PR head не доказывают успешный merge с т
 | Дополнительная пара SHA `8636776…` | `dpl_BG8ZLP359qY84Ldr21eQmmQffmon`: ERROR / 420 ms | `dpl_DAvF3y4NWZNomSFjb9LrQdxUYKEf`: READY / 78671 ms |
 | Видимые настройки | Одна команда, hobby, nextjs, Node 24.x, iad1 | То же |
 
-**Доказана стадия сбоя:** выделение ресурсов/инициализация сборки Vercel до доступных build logs. **Точная внутренняя первопричина не установлена**: доступный API не раскрывает provisioning trace, все скрытые build settings и остатки квот. Работа одного SHA во втором проекте ослабляет гипотезу общей регрессии кода, но не исключает различия конфигурации/окружения.
+При первичной диагностике сбой локализован в подготовке ресурсов Vercel до появления журнала сборки. Ресурс, блокирующий этот этап, найден при дополнительной проверке ниже.
 
 В выборке последних 40 deployments основной имеет 20 ERROR; второй — 16 READY / 4 CANCELED. Это выборка, не полная история. Основной публичный alias `my-gpt-chat-theta.vercel.app` всё ещё направлен на deployment от 04.11, SHA `9c8dcb52…`; второй — на указанную успешную сборку main от 19.11. Назначение aliases проверено API, login/chat сайта не тестировались.
 
-Native API не раскрыл полные rootDirectory/build/install commands/resources и quota counters; billing API вернул `404 costs_not_found`. Это не доказательство исчерпания квоты. Integration configurations показал одну Supabase Free Plan установку без раскрытого назначения проектам; отсутствие других механизмов интеграции этим не доказано. Оба проекта ссылаются на нужный GitHub owner/repo, но ответы с withGitRepoInfo не раскрывают числовой repository/installation ID: соответствие скрытого binding текущему GitHub repository ID 1413195593 не проверено. Устаревший binding не доказан и не исключён.
+Ответы API проектов не раскрыли полные команды сборки и значения квот. В дополнительной проверке фильтр Vercel по GitHub repository ID `1413195593` вернул оба проекта. Список установок Marketplace показал Supabase Free Plan. Связь ресурса с конкретным проектом проверена отдельно, через метаданные хранилища.
 
 В успешных логах Vercel выбрал Node 26.x из-за `engines.node >=22`, несмотря на настройку 24.x. Это отдельный риск непреднамеренного major upgrade, **не установленная причина provisioning ERROR**. package.json не изменялся.
 
 [Vercel Status](https://www.vercel-status.com/) на момент проверки: All Systems Operational, active incidents пусты, Builds/API/Git/iad1 operational. Связь предыдущих инцидентов с данным проектом не установлена. Подготовлено [обращение в поддержку](VERCEL_SUPPORT_20261119.md), оно **не отправлено**.
+
+### Дополнительная диагностика и восстановление
+
+- Vercel Storage вернул `status=suspended` и `externalResourceStatus=suspended` для ресурса `supabase-coral-planet` (`store_CWHeLik7O6o0RbTP`, Supabase ref `ipjakegqcqjkejrwdcts`). Уведомление ресурса прямо сообщает, что проект приостановлен и его нужно возобновить в Supabase Dashboard.
+- В метаданных Vercel ресурс привязан к одному проекту, `my-gpt-chat`, в Preview и Production. Для этой связи `deployments.required=true`. Последнее развёртывание в метаданных — `dpl_58JxTQLSeWrCkExBuujo3deyoTtp`: `BUILD_FAILED: Resource provisioning failed` за 502 мс, 0 записей в журнале сборки. Соответствующее Preview второго проекта на SHA `6f1ef0655b7adc5738cb597afbe3981d19d51af4` завершилось `READY`.
+- Чтение приостановленного проекта через текущий Supabase MCP отклонено из-за прав. Доступный из MCP проект `svoi-lyudi` имеет другой ref (`okgvefugojajamtyqfxa`). Возобновление выполняется владельцем в [Supabase Dashboard](https://supabase.com/dashboard/project/ipjakegqcqjkejrwdcts) кнопкой **Resume project** на текущем тарифе Free.
+- После возобновления проверить, что статус хранилища обновился в Vercel, затем повторить только Preview основного проекта. Критерии восстановления — наличие журнала сборки, статус `READY` и доступность страницы Preview. Основной публичный сайт отвечал HTTP 200 с действующего развёртывания. Новый Production и слияние PR требуют отдельного разрешения.
 
 ## 4. Причина и безопасное исправление OAuth Google Sheets
 
