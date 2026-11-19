@@ -1,0 +1,8 @@
+# Example only. Merge into user-level Codex configuration after audit.
+# Version is the pinned example documented by the upstream project, not a verified latest release.
+# Do not expose this local server publicly or pass secrets to it.
+[mcp_servers.ruflo]
+command = "npx"
+args = ["--yes", "ruflo@3.38.23", "mcp", "start"]
+startup_timeout_sec = 60
+tool_timeout_sec = 120
