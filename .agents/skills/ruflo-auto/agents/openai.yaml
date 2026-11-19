@@ -1,0 +1,5 @@
+interface:
+  display_name: "Ruflo Auto"
+  short_description: "Координация сложных задач с независимыми подзадачами"
+policy:
+  allow_implicit_invocation: true
