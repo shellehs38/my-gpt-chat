@@ -1,5 +1,7 @@
 # Модели, шлюзы и связка Codex / Work — статус на 2026-11-05
 
+![СВОИ ЛЮДИ](../public/brand/logo-sl-approved-light.png)
+
 **Тип записи:** технический журнал для Codex, Work и владельца. Проверки разделены по происхождению; не трактовать как постоянный мониторинг.
 
 ## Подтверждено
@@ -69,3 +71,19 @@
 - [ ] Work читает общий контекст через GitHub, но не подменяет собственную модель сторонним шлюзом.
 
 **До прохождения тестов статус — «шаблоны готовы, локальное подключение не выполнено»**. Коммит в GitHub сам не устанавливает провайдера в Codex.
+
+## Проверка текущей Cloud-среды — 19.11.2026
+
+Исходный main: `a4c24244495054b9cb4b4247703d8a2acf68fb18`; отдельная ветка `audit/integrations-codex-20261119`. Старые строки этого журнала сохраняются как исторические факты. Актуальные доказательства и границы: [итог аудита](INTEGRATION_AUDIT_20261119.md), [машинный снимок](integration-audits/20261119/evidence.json).
+
+- В текущем Codex CLI установлен Superpowers 7.0.2; реальный app-server skills/list обнаружил и включил все 9 требуемых навыков. Это не установка на всех устройствах.
+- Codebase Memory 0.12.1 установлен с проверкой SHA-256, проиндексировал текущий checkout; реальный MCP JSON-RPC, 17 инструментов, ADR после перезапуска и поиск кода проверены. Launcher зарегистрирован в локальном Codex CLI.
+- Существующий hosted Composio доступен текущему агенту: GitHub file read, Google Drive account metadata, Gmail profile и Google Calendar list успешны. Отдельный CLI Composio отсутствует и не авторизован. Новых подключений не создавалось.
+- При попытке сохранить audit commit шлюз Composio вернул Cloudflare HTTP 403; повторная проверка подтвердила отсутствие новой ветки. Запись через Composio не подтверждена и не повторялась; для GitHub отдельно проверен штатный connector с push правами, предусмотренный разрешённым fallback регламентом.
+- Google Sheets ACTIVE, но свежий поиск таблиц получил 403 ACCESS_TOKEN_SCOPE_INSUFFICIENT от DriveFiles.List. Достаточные права Sheets отдельно не доказаны. Рабочие таблицы/ячейки не изменялись, ограничение не обходилось.
+- Оба Graphify подключения отвечают, но используют один индекс commit `8e285fc…` от 12.11, отстающий от main на 2 коммита.
+- Railway: 4 сервиса Online/SUCCESS. FreeLLMAPI/OmniRoute health=200, unauthenticated models=401; key-authorized inference, fallback и Responses API в этой проверке не выполнялись.
+- Supabase ACTIVE_HEALTHY; только catalog SELECT, 9 public таблиц с RLS и без policies. Приложение использует GoogleSheetsLedger, клиентская запись Supabase не подтверждена.
+- Telegram: deployment/source/bootstrap и имена переменных проверены; Bot API, доставка, inference и Google E2E не тестировались. Секреты не извлекались.
+- Vercel основной: provisioning ERROR до build logs (711 ms), второй на том же SHA READY (69284 ms). Дополнительная существовавшая пара повторяет отказ/успех. Точная внутренняя причина, квоты и все скрытые настройки не раскрыты; code/tariff/Connect причиной не объявляются. [Черновик поддержки](VERCEL_SUPPORT_20261119.md) подготовлен, не отправлен.
+- Локальные typecheck/build успешны; 174 server + 210 calculator tests прошли, 2 calculator skipped; Python memory reader 4/4. Нативные модели Codex/Work, Production, ключи, тарифы и реальные данные не менялись. PR не сливался.

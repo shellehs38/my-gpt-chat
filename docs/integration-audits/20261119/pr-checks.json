@@ -1,0 +1,745 @@
+[
+  {
+    "total": 5,
+    "checks": [
+      {
+        "name": "Vercel Preview Comments",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/runs/135565422415"
+      },
+      {
+        "name": "verify-memory",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/44525527271/job/135564953047"
+      },
+      {
+        "name": "verify",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/44525526685/job/135564950277"
+      },
+      {
+        "name": "Supabase Preview",
+        "status": "completed",
+        "conclusion": "skipped",
+        "url": "https://github.com/shellehs38/my-gpt-chat/runs/135564948577"
+      },
+      {
+        "name": "verify-memory",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/44525458227/job/135564706808"
+      }
+    ],
+    "number": 46,
+    "title": "docs: подключение Ruflo MCP и правила координации агентов",
+    "sha": "863677688de016585f934d7565a1a50faec87eab",
+    "url": "https://github.com/shellehs38/my-gpt-chat/pull/46",
+    "retrievalSuccessful": true
+  },
+  {
+    "total": 5,
+    "checks": [
+      {
+        "name": "Vercel Preview Comments",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/runs/134979180851"
+      },
+      {
+        "name": "Supabase Preview",
+        "status": "completed",
+        "conclusion": "skipped",
+        "url": "https://github.com/shellehs38/my-gpt-chat/runs/134978595586"
+      },
+      {
+        "name": "verify-memory",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/44354428639/job/134978558489"
+      },
+      {
+        "name": "verify",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/44354426584/job/134978549809"
+      },
+      {
+        "name": "verify-memory",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/44354356272/job/134978304285"
+      }
+    ],
+    "number": 44,
+    "title": "docs: проверка расширения Composio и ограничение Google Sheets",
+    "sha": "6cbfddd216035c1d6e17b5f921f51417e908954a",
+    "url": "https://github.com/shellehs38/my-gpt-chat/pull/44",
+    "retrievalSuccessful": true
+  },
+  {
+    "total": 6,
+    "checks": [
+      {
+        "name": "Vercel Preview Comments",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/runs/134932898311"
+      },
+      {
+        "name": "Graphify Formal Verification",
+        "status": "completed",
+        "conclusion": "neutral",
+        "url": "https://github.com/shellehs38/my-gpt-chat/runs/134932663644"
+      },
+      {
+        "name": "verify",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/44341309137/job/134931721521"
+      },
+      {
+        "name": "verify-memory",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/44341308908/job/134931719433"
+      },
+      {
+        "name": "Supabase Preview",
+        "status": "completed",
+        "conclusion": "skipped",
+        "url": "https://github.com/shellehs38/my-gpt-chat/runs/134931716585"
+      },
+      {
+        "name": "verify-memory",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/44341065587/job/134930846210"
+      }
+    ],
+    "number": 42,
+    "title": "docs: подключение официального Perplexity MCP к Codex и помощнику",
+    "sha": "3a9cd0dd23622a80854a90547f445c6be89bf9d3",
+    "url": "https://github.com/shellehs38/my-gpt-chat/pull/42",
+    "retrievalSuccessful": true
+  },
+  {
+    "total": 5,
+    "checks": [
+      {
+        "name": "Vercel Preview Comments",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/runs/133475510434"
+      },
+      {
+        "name": "verify",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/43917313319/job/133474848949"
+      },
+      {
+        "name": "verify-memory",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/43917313304/job/133474848660"
+      },
+      {
+        "name": "Supabase Preview",
+        "status": "completed",
+        "conclusion": "skipped",
+        "url": "https://github.com/shellehs38/my-gpt-chat/runs/133474843598"
+      },
+      {
+        "name": "verify-memory",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/43917235037/job/133474572222"
+      }
+    ],
+    "number": 41,
+    "title": "Сохранить реквизиты «СВОИ ЛЮДИ» и автозаполнение документов",
+    "sha": "903d9a6d137da51c78adc123f7554bdb5f2fed39",
+    "url": "https://github.com/shellehs38/my-gpt-chat/pull/41",
+    "retrievalSuccessful": true
+  },
+  {
+    "total": 5,
+    "checks": [
+      {
+        "name": "Vercel Preview Comments",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/runs/133081312394"
+      },
+      {
+        "name": "Supabase Preview",
+        "status": "completed",
+        "conclusion": "skipped",
+        "url": "https://github.com/shellehs38/my-gpt-chat/runs/133080375947"
+      },
+      {
+        "name": "verify-memory",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/43800810758/job/133080370944"
+      },
+      {
+        "name": "verify",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/43800810705/job/133080369684"
+      },
+      {
+        "name": "verify-memory",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/43800776093/job/133080253349"
+      }
+    ],
+    "number": 40,
+    "title": "docs: мастер-ТЗ завершения интеграций Codex, Work, Railway, Vercel и 13 инструментов",
+    "sha": "845f32eca9e3a4876163693bcba4b3194b706b10",
+    "url": "https://github.com/shellehs38/my-gpt-chat/pull/40",
+    "retrievalSuccessful": true
+  },
+  {
+    "total": 10,
+    "checks": [
+      {
+        "name": "Vercel Preview Comments",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/runs/133077552143"
+      },
+      {
+        "name": "python-tools (browser-use)",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/43799789105/job/133077013837"
+      },
+      {
+        "name": "python-tools (markitdown)",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/43799789105/job/133077013752"
+      },
+      {
+        "name": "python-tools (mem0)",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/43799789105/job/133077013751"
+      },
+      {
+        "name": "python-tools (docling)",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/43799789105/job/133077013727"
+      },
+      {
+        "name": "playwright-smoke",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/43799789105/job/133077013514"
+      },
+      {
+        "name": "verify-memory",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/43799789112/job/133076927174"
+      },
+      {
+        "name": "verify",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/43799789093/job/133076926862"
+      },
+      {
+        "name": "Supabase Preview",
+        "status": "completed",
+        "conclusion": "skipped",
+        "url": "https://github.com/shellehs38/my-gpt-chat/runs/133076922595"
+      },
+      {
+        "name": "verify-memory",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/43799783561/job/133076908365"
+      }
+    ],
+    "number": 39,
+    "title": "feat: изолированная установка и проверка GitHub-инструментов (13 кандидатов)",
+    "sha": "e26ed11dc2e0bdb212526cbc68b9fd22fa1f918d",
+    "url": "https://github.com/shellehs38/my-gpt-chat/pull/39",
+    "retrievalSuccessful": true
+  },
+  {
+    "total": 6,
+    "checks": [
+      {
+        "name": "Vercel Preview Comments",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/runs/132838920774"
+      },
+      {
+        "name": "Graphify Formal Verification",
+        "status": "completed",
+        "conclusion": "neutral",
+        "url": "https://github.com/shellehs38/my-gpt-chat/runs/132838641416"
+      },
+      {
+        "name": "verify",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/43722798160/job/132838207988"
+      },
+      {
+        "name": "verify-memory",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/43722798131/job/132838207804"
+      },
+      {
+        "name": "Supabase Preview",
+        "status": "completed",
+        "conclusion": "skipped",
+        "url": "https://github.com/shellehs38/my-gpt-chat/runs/132838207334"
+      },
+      {
+        "name": "verify-memory",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/43722771748/job/132838125912"
+      }
+    ],
+    "number": 37,
+    "title": "docs: обзор популярных GitHub-инструментов для СВОИ ЛЮДИ",
+    "sha": "fe5d3ff3c695a1be916f5df481efa8a15cfe384f",
+    "url": "https://github.com/shellehs38/my-gpt-chat/pull/37",
+    "retrievalSuccessful": true
+  },
+  {
+    "total": 5,
+    "checks": [
+      {
+        "name": "Vercel Preview Comments",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/runs/131123885808"
+      },
+      {
+        "name": "verify",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/43200575954/job/131122611883"
+      },
+      {
+        "name": "verify-memory",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/43200575936/job/131122611637"
+      },
+      {
+        "name": "verify-memory",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/43200569403/job/131122588986"
+      },
+      {
+        "name": "Supabase Preview",
+        "status": "completed",
+        "conclusion": "skipped",
+        "url": "https://github.com/shellehs38/my-gpt-chat/runs/131122578446"
+      }
+    ],
+    "number": 36,
+    "title": "Extend GitLab backup with GitHub metadata and Actions exports",
+    "sha": "f47020d43778648f683ce1f1b39d732c0b06f68e",
+    "url": "https://github.com/shellehs38/my-gpt-chat/pull/36",
+    "retrievalSuccessful": true
+  },
+  {
+    "total": 6,
+    "checks": [
+      {
+        "name": "Vercel Preview Comments",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/runs/126354104710"
+      },
+      {
+        "name": "verify-memory",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/41762434179/job/126352977957"
+      },
+      {
+        "name": "verify",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/41762434043/job/126352977915"
+      },
+      {
+        "name": "Supabase Preview",
+        "status": "completed",
+        "conclusion": "skipped",
+        "url": "https://github.com/shellehs38/my-gpt-chat/runs/126352976786"
+      },
+      {
+        "name": "verify-memory",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/41762364164/job/126352747488"
+      },
+      {
+        "name": "verify",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/41762364132/job/126352747441"
+      }
+    ],
+    "number": 27,
+    "title": "Пилот Harness²: проверенные уроки для будущих задач без изменения модели",
+    "sha": "c4dc33f382300000eaaf71244cee1973a1d9d377",
+    "url": "https://github.com/shellehs38/my-gpt-chat/pull/27",
+    "retrievalSuccessful": true
+  },
+  {
+    "total": 6,
+    "checks": [
+      {
+        "name": "Vercel Preview Comments",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/runs/125262384332"
+      },
+      {
+        "name": "Supabase Preview",
+        "status": "completed",
+        "conclusion": "skipped",
+        "url": "https://github.com/shellehs38/my-gpt-chat/runs/125261050527"
+      },
+      {
+        "name": "verify-memory",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/41440552863/job/125261025389"
+      },
+      {
+        "name": "verify",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/41440552873/job/125261025323"
+      },
+      {
+        "name": "verify-memory",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/41440523274/job/125260933964"
+      },
+      {
+        "name": "verify",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/41440523448/job/125260931698"
+      }
+    ],
+    "number": 24,
+    "title": "Регламент: использовать установленные плагины по назначению",
+    "sha": "e257bba244b0b843afd4a9ba64a966c40f3dfc19",
+    "url": "https://github.com/shellehs38/my-gpt-chat/pull/24",
+    "retrievalSuccessful": true
+  },
+  {
+    "total": 6,
+    "checks": [
+      {
+        "name": "Vercel Preview Comments",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/runs/123604067047"
+      },
+      {
+        "name": "Supabase Preview",
+        "status": "completed",
+        "conclusion": "skipped",
+        "url": "https://github.com/shellehs38/my-gpt-chat/runs/123602769811"
+      },
+      {
+        "name": "verify-memory",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/40917849453/job/123602747942"
+      },
+      {
+        "name": "verify",
+        "status": "completed",
+        "conclusion": "failure",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/40917849296/job/123602747003"
+      },
+      {
+        "name": "verify",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/40917838258/job/123602709475"
+      },
+      {
+        "name": "verify-memory",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/40917838222/job/123602708951"
+      }
+    ],
+    "number": 23,
+    "title": "Аудит плагинов: убрать устаревшую наценку 40% и проверить подключения",
+    "sha": "49ef7fcb06e5ce9983f048a47720753c50a77816",
+    "url": "https://github.com/shellehs38/my-gpt-chat/pull/23",
+    "retrievalSuccessful": true
+  },
+  {
+    "total": 5,
+    "checks": [
+      {
+        "name": "Vercel Preview Comments",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/runs/123589080274"
+      },
+      {
+        "name": "verify-memory",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/40913339682/job/123586884160"
+      },
+      {
+        "name": "verify",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/40913339394/job/123586882301"
+      },
+      {
+        "name": "verify-memory",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/40913321148/job/123586819066"
+      },
+      {
+        "name": "verify",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/40913320874/job/123586817878"
+      }
+    ],
+    "number": 22,
+    "title": "Утвердить обязательные правила использования Graphify",
+    "sha": "0ae6d23c47afe083c47491fb08b811852b66c0e7",
+    "url": "https://github.com/shellehs38/my-gpt-chat/pull/22",
+    "retrievalSuccessful": true
+  },
+  {
+    "total": 5,
+    "checks": [
+      {
+        "name": "Vercel Preview Comments",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/runs/123576724090"
+      },
+      {
+        "name": "verify-memory",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/40910105254/job/123575446358"
+      },
+      {
+        "name": "verify",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/40910105127/job/123575446014"
+      },
+      {
+        "name": "verify",
+        "status": "completed",
+        "conclusion": "failure",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/40910089066/job/123575389043"
+      },
+      {
+        "name": "verify-memory",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/40910088958/job/123575388448"
+      }
+    ],
+    "number": 21,
+    "title": "Добавить навык remove-ai-marks для проверки метаданных файлов",
+    "sha": "21ecc24d273423030275e140c86d86be2735d899",
+    "url": "https://github.com/shellehs38/my-gpt-chat/pull/21",
+    "retrievalSuccessful": true
+  },
+  {
+    "total": 8,
+    "checks": [
+      {
+        "name": "Windows x64 portable",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/40485591541/job/122127504574"
+      },
+      {
+        "name": "iOS compile only (unsigned)",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/40485591541/job/122127504444"
+      },
+      {
+        "name": "Vercel Preview Comments",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/runs/122126924350"
+      },
+      {
+        "name": "verify-memory",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/40485596838/job/122126474876"
+      },
+      {
+        "name": "verify",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/40485596834/job/122126474810"
+      },
+      {
+        "name": "verify-memory",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/40485591769/job/122126457534"
+      },
+      {
+        "name": "verify",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/40485591817/job/122126457292"
+      },
+      {
+        "name": "Analyze and test",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/40485591541/job/122126456321"
+      }
+    ],
+    "number": 17,
+    "title": "Нативное приложение iPhone и Windows: помощник и PDF-инструкции",
+    "sha": "26d840f21d764b0b80d9447d602ebffa0ff8270f",
+    "url": "https://github.com/shellehs38/my-gpt-chat/pull/17",
+    "retrievalSuccessful": true
+  },
+  {
+    "total": 5,
+    "checks": [
+      {
+        "name": "Vercel Preview Comments",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/runs/118747166733"
+      },
+      {
+        "name": "verify-memory",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/39450595365/job/118724041596"
+      },
+      {
+        "name": "verify",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/39450594841/job/118724039439"
+      },
+      {
+        "name": "verify-memory",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/39450585809/job/118724010460"
+      },
+      {
+        "name": "verify",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/39450585803/job/118724008627"
+      }
+    ],
+    "number": 5,
+    "title": "Черновик: поиск фасадных материалов через Firecrawl",
+    "sha": "813ac8619a76517dd0ae110406c1cce26e0014a2",
+    "url": "https://github.com/shellehs38/my-gpt-chat/pull/5",
+    "retrievalSuccessful": true
+  },
+  {
+    "total": 5,
+    "checks": [
+      {
+        "name": "Vercel Preview Comments",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/runs/117988579056"
+      },
+      {
+        "name": "verify",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/39230727523/job/117987750602"
+      },
+      {
+        "name": "verify-memory",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/39230727583/job/117987750426"
+      },
+      {
+        "name": "verify-memory",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/39230721907/job/117987731728"
+      },
+      {
+        "name": "verify",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/actions/runs/39230721885/job/117987731348"
+      }
+    ],
+    "number": 4,
+    "title": "Добавить кнопку открытия Google Таблицы в «Бизнес и продажи»",
+    "sha": "d92e2a6b48801c6af466bd3802e99bae89e22005",
+    "url": "https://github.com/shellehs38/my-gpt-chat/pull/4",
+    "retrievalSuccessful": true
+  },
+  {
+    "total": 0,
+    "checks": [],
+    "number": 2,
+    "title": "Добавить базу знаний по фасадным работам",
+    "sha": "1d397330ee6990ba011ecdf4a824f179fa494d77",
+    "url": "https://github.com/shellehs38/my-gpt-chat/pull/2",
+    "retrievalSuccessful": true
+  },
+  {
+    "total": 1,
+    "checks": [
+      {
+        "name": "Vercel Preview Comments",
+        "status": "completed",
+        "conclusion": "success",
+        "url": "https://github.com/shellehs38/my-gpt-chat/runs/115127910101"
+      }
+    ],
+    "number": 1,
+    "title": "Draft: модернизация строительного помощника",
+    "sha": "a9f9513d86988794db87b3e5a91653a1a04098d5",
+    "url": "https://github.com/shellehs38/my-gpt-chat/pull/1",
+    "retrievalSuccessful": true
+  }
+]

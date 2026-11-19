@@ -1,0 +1,70 @@
+{
+  "checkedDate": "2026-11-19",
+  "transport": "existing Composio connection",
+  "connectionState": "ACTIVE",
+  "operation": "GOOGLESHEETS_SEARCH_SPREADSHEETS",
+  "responseSuccessful": false,
+  "httpStatus": 403,
+  "providerError": {
+    "error": {
+      "code": 403,
+      "message": "Request had insufficient authentication scopes.",
+      "errors": [
+        {
+          "message": "Insufficient Permission",
+          "domain": "global",
+          "reason": "insufficientPermissions"
+        }
+      ],
+      "status": "PERMISSION_DENIED",
+      "details": [
+        {
+          "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+          "reason": "ACCESS_TOKEN_SCOPE_INSUFFICIENT",
+          "domain": "googleapis.com",
+          "metadata": {
+            "service": "drive.googleapis.com",
+            "method": "google.apps.drive.v3.DriveFiles.List"
+          }
+        }
+      ]
+    }
+  },
+  "otherConnectionsReadChecks": [
+    {
+      "operation": "GMAIL_GET_PROFILE",
+      "responseSuccessful": true,
+      "responseFieldNames": [
+        "display_url",
+        "emailAddress",
+        "historyId",
+        "messagesTotal",
+        "threadsTotal"
+      ]
+    },
+    {
+      "operation": "GOOGLECALENDAR_LIST_CALENDARS",
+      "responseSuccessful": true,
+      "responseFieldNames": [
+        "calendars",
+        "display_url",
+        "next_page_token",
+        "next_sync_token"
+      ]
+    },
+    {
+      "operation": "GOOGLEDRIVE_GET_ABOUT",
+      "responseSuccessful": true,
+      "responseFieldNames": [
+        "display_url",
+        "kind",
+        "link_label",
+        "user"
+      ]
+    }
+  ],
+  "scopeValuesRetrieved": false,
+  "tokenValuesRetrieved": false,
+  "cellReads": 0,
+  "cellWrites": 0
+}
