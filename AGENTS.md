@@ -18,7 +18,7 @@
 
 ## Supabase и учёт
 
-При задачах о клиентах, объектах, расходах, сметах и переносе базы обязательно читай [docs/SUPABASE_BUSINESS_ASSISTANT.md](docs/SUPABASE_BUSINESS_ASSISTANT.md) и SQL-схему `supabase/migrations/20261019_initial_private_business_schema.sql`. Сохраняй текущий Google Sheets учёт, пока адаптер Supabase не проверен. Не утверждай, что сайт уже записывает в Supabase, до реального сквозного теста.
+При задачах о клиентах, объектах, расходах, сметах и переносе базы обязательно читай [docs/SUPABASE_BUSINESS_ASSISTANT.md](docs/SUPABASE_BUSINESS_ASSISTANT.md) и SQL-схему `supabase/migrations/20261019135738_initial_private_business_schema.sql`. Сохраняй текущий Google Sheets учёт, пока адаптер Supabase не проверен. Не утверждай, что сайт уже записывает в Supabase, до реального сквозного теста.
 
 ## Экономия токенов, маршрутизация моделей и контекст
 

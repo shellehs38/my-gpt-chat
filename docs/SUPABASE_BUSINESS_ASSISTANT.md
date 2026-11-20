@@ -1,7 +1,7 @@
 # Supabase для помощника СВОИ ЛЮДИ
 
 Проект: svoi-lyudi (okgvefugojajamtyqfxa), регион ap-northeast-1.
-Схема БД: supabase/migrations/20261019_initial_private_business_schema.sql.
+Схема БД описана в [начальной миграции](../supabase/migrations/20261019135738_initial_private_business_schema.sql) и [миграции признаков импорта и тестовых записей](../supabase/migrations/20261019142016_legacy_import_provenance_and_demo_flags.sql). Номера в именах файлов соответствуют истории `supabase_migrations.schema_migrations`.
 Созданы clients, objects, expenses, receipts, estimates, estimate_lines, tasks, import_batches, operation_log.
 
 ## Правила
